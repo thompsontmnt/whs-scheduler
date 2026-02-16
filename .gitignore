@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+venv/
+.venv/
+.env
+
+# Generated output (optional: remove these lines if you want to track outputs)
+assignments.csv
+conflicts.csv
