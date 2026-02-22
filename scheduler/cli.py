@@ -10,10 +10,15 @@ from scheduler.parsers import (
     load_courses_from_reqexport,
     load_requests,
     load_requests_from_reqexport,
+    load_section_templates,
     load_students,
     load_students_from_reqexport,
 )
-from scheduler.reports import write_assignments_csv, write_conflicts_csv
+from scheduler.reports import (
+    write_assignments_csv,
+    write_conflicts_csv,
+    write_schedulecc_csv,
+)
 
 
 def load_capacity(path: Path) -> dict[str, int]:
@@ -76,7 +81,15 @@ def main() -> None:
         default=None,
         help="Use reqexport-style file: students, requests, and courses derived from this one file (ignores --students, --requests, --prior)",
     )
+    parser.add_argument(
+        "--section-templates",
+        type=Path,
+        default=None,
+        help="Optional tab-delimited file used to write schedulecc.csv (columns: class_code, expression, section_number, teacher_id, section_id, term_id, school_id, build_id, period)",
+    )
     args = parser.parse_args()
+
+    args.output_dir.mkdir(parents=True, exist_ok=True)
 
     if args.reqexport is not None and args.reqexport.exists():
         students = load_students_from_reqexport(args.reqexport)
@@ -102,6 +115,12 @@ def main() -> None:
 
     print(f"Wrote {assignments_path} ({len(assignments)} assignments)")
     print(f"Wrote {conflicts_path} ({len(conflicts)} conflicts)")
+
+    if args.section_templates is not None and args.section_templates.exists():
+        section_templates = load_section_templates(args.section_templates)
+        schedulecc_path = args.output_dir / "schedulecc.csv"
+        write_schedulecc_csv(schedulecc_path, assignments, section_templates)
+        print(f"Wrote {schedulecc_path}")
 
 
 if __name__ == "__main__":

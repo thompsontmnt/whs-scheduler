@@ -3,12 +3,13 @@
 import csv
 from pathlib import Path
 
-from scheduler.models import Course, Request, Student
+from scheduler.models import Course, Request, SectionTemplate, Student
 
 
 # reqexport.txt columns (0-indexed): Student Name, Student Number, Next Grade, School, Dept, Course #, Course_Name, ...
 _REQEXPORT_MIN_COLS = 7
 _REQEXPORT_HEADER_FIRST = "Student Name"
+_REQEXPORT_REQUEST_TYPE_INDEX = 10
 
 
 def _infer_semester_from_course_name(course_name: str) -> tuple[str, str]:
@@ -111,8 +112,14 @@ def load_students_from_reqexport(path: Path) -> dict[str, Student]:
 
 
 def load_requests_from_reqexport(path: Path) -> list[Request]:
-    """Build requests from reqexport: one Request per row (Student Number, Course #). Skips header."""
+    """Build normalized requests from reqexport.
+
+    Rules:
+    - keep only rows where Request Type is empty or Primary
+    - dedupe by (student_id, class_code), preserving first occurrence
+    """
     requests: list[Request] = []
+    seen_pairs: set[tuple[str, str]] = set()
     with path.open(newline="", encoding="utf-8") as f:
         reader = csv.reader(f, delimiter="\t")
         for row in reader:
@@ -120,8 +127,17 @@ def load_requests_from_reqexport(path: Path) -> list[Request]:
                 continue
             if row[0].strip() == _REQEXPORT_HEADER_FIRST:
                 continue
+            request_type = ""
+            if len(row) > _REQEXPORT_REQUEST_TYPE_INDEX:
+                request_type = row[_REQEXPORT_REQUEST_TYPE_INDEX].strip().strip('"').lower()
+            if request_type and request_type != "primary":
+                continue
             student_id = row[1].strip()
             class_code = row[5].strip()
+            pair = (student_id, class_code)
+            if pair in seen_pairs:
+                continue
+            seen_pairs.add(pair)
             requests.append(Request(student_id=student_id, class_code=class_code))
     return requests
 
@@ -148,3 +164,94 @@ def load_courses_from_reqexport(path: Path) -> dict[str, Course]:
                 semester_flag=semester_flag,
             )
     return courses
+
+
+def load_section_templates(path: Path) -> dict[str, list[SectionTemplate]]:
+    """Load section template rows from tab-delimited file.
+
+    Expected header columns:
+    class_code, expression, section_number, teacher_id, section_id, term_id, school_id, build_id, period
+    """
+    templates_by_key: dict[
+        tuple[str, str, str, str, str, str, str, str],
+        dict[str, object],
+    ] = {}
+
+    def _to_int(raw: str) -> int:
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            return 0
+
+    with path.open(newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f, delimiter="\t")
+        for row in reader:
+            class_code = (row.get("class_code") or "").strip()
+            if not class_code:
+                continue
+            expression = (row.get("expression") or "").strip()
+            section_number = (row.get("section_number") or "").strip()
+            teacher_id = (row.get("teacher_id") or "").strip()
+            section_id = (row.get("section_id") or "").strip()
+            term_id = (row.get("term_id") or "").strip()
+            school_id = (row.get("school_id") or "25").strip()
+            build_id = (row.get("build_id") or "").strip()
+            period = (row.get("period") or "").strip()
+
+            key = (
+                class_code,
+                section_number,
+                teacher_id,
+                section_id,
+                term_id,
+                school_id,
+                build_id,
+                period,
+            )
+            if key not in templates_by_key:
+                templates_by_key[key] = {
+                    "expression": expression,
+                    "meetings": set(),
+                }
+            if expression and not templates_by_key[key]["expression"]:
+                templates_by_key[key]["expression"] = expression
+
+            day_raw = (row.get("day") or "").strip()
+            mod_raw = (row.get("mod") or "").strip()
+            day = _to_int(day_raw)
+            mod = _to_int(mod_raw)
+            if day > 0 and mod > 0:
+                meetings = templates_by_key[key]["meetings"]
+                assert isinstance(meetings, set)
+                meetings.add((day, mod))
+
+    templates: dict[str, list[SectionTemplate]] = {}
+    for key, value in templates_by_key.items():
+        (
+            class_code,
+            section_number,
+            teacher_id,
+            section_id,
+            term_id,
+            school_id,
+            build_id,
+            period,
+        ) = key
+        expression = value["expression"] if isinstance(value["expression"], str) else ""
+        meetings_value = value["meetings"] if isinstance(value["meetings"], set) else set()
+        meetings = tuple(sorted(meetings_value))
+        template = SectionTemplate(
+            class_code=class_code,
+            expression=expression,
+            section_number=section_number,
+            teacher_id=teacher_id,
+            section_id=section_id,
+            term_id=term_id,
+            school_id=school_id,
+            build_id=build_id,
+            period=period,
+            meetings=meetings,
+        )
+        templates.setdefault(class_code, []).append(template)
+
+    return templates
