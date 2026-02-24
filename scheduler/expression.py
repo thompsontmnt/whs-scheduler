@@ -5,22 +5,22 @@ from collections import defaultdict
 _DAY_CODE = {1: "A", 2: "B", 3: "C", 4: "D", 5: "E"}
 
 
-def _collapse_numbers(values: list[int]) -> str:
-    """Collapse sorted ints into range syntax: [1,2,4] -> '1-2,4'."""
+def _contiguous_ranges(values: list[int]) -> list[tuple[int, int]]:
+    """Convert sorted ints to contiguous ranges: [1,2,4] -> [(1,2), (4,4)]."""
     if not values:
-        return ""
-    parts: list[str] = []
+        return []
+    ranges: list[tuple[int, int]] = []
     start = values[0]
     prev = values[0]
     for value in values[1:]:
         if value == prev + 1:
             prev = value
             continue
-        parts.append(f"{start}-{prev}" if start != prev else str(start))
+        ranges.append((start, prev))
         start = value
         prev = value
-    parts.append(f"{start}-{prev}" if start != prev else str(start))
-    return ",".join(parts)
+    ranges.append((start, prev))
+    return ranges
 
 
 def _collapse_days(days: list[int]) -> str:
@@ -74,13 +74,15 @@ def build_expression_from_meetings(meetings: list[tuple[int, int]]) -> str:
         key = tuple(sorted(days))
         mods_by_dayset[key].append(mod)
 
-    tokens: list[str] = []
-    for day_tuple in sorted(mods_by_dayset, key=lambda d: (len(d), d)):
-        mods = sorted(mods_by_dayset[day_tuple])
-        mod_label = _collapse_numbers(mods)
+    token_parts: list[tuple[int, str]] = []
+    for day_tuple, mods in mods_by_dayset.items():
         day_label = _collapse_days(list(day_tuple))
-        if mod_label and day_label:
-            tokens.append(f"{mod_label}({day_label})")
+        if not day_label:
+            continue
+        for start_mod, end_mod in _contiguous_ranges(sorted(mods)):
+            mod_label = str(start_mod) if start_mod == end_mod else f"{start_mod}-{end_mod}"
+            token_parts.append((start_mod, f"{mod_label}({day_label})"))
+
+    tokens = [token for _, token in sorted(token_parts, key=lambda t: (t[0], t[1]))]
 
     return " ".join(tokens)
-

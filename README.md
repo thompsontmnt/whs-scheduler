@@ -43,12 +43,18 @@ Then open http://127.0.0.1:8000 . Use the form to upload your reqexport file (an
 
 To start aligning with PowerSchool import requirements, provide a tab-delimited section template file:
 
-`class_code	expression	section_number	teacher_id	section_id	term_id	school_id	build_id	period	day	mod`
+`class_code	expression	section_number	teacher_id	section_id	term_id	school_id	build_id	period	day	mod	tied`
 
 Example:
 
-`1637A		16	22793	314419	3501	25	3558		1	6`
+`1637A		16	22793	314419	3501	25	3558		1	6	tied`
 
 If `expression` is blank and `day` + `mod` rows are present for the same section, the exporter now builds expression text automatically (e.g. `1(A-B)`, `1-2(C)`).
 
 If multiple rows exist for a class code, assignments are distributed round-robin across those template rows.
+
+
+Notes:
+- Day mapping is fixed: `1=A`, `2=B`, `3=C`, `4=D`, `5=E`.
+- Consecutive mods/days are compressed with hyphen ranges; non-consecutive days use commas inside a token (for example `9-10(A-B,D)`).
+- For `tied=untied`, rows are kept as separate expression cells instead of being merged.

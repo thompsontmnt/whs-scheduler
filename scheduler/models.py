@@ -53,3 +53,4 @@ class SectionTemplate:
     build_id: str = ""
     period: str = ""
     meetings: tuple[tuple[int, int], ...] = ()
+    tied: bool = True

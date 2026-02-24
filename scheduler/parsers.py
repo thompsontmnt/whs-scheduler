@@ -171,17 +171,20 @@ def load_section_templates(path: Path) -> dict[str, list[SectionTemplate]]:
 
     Expected header columns:
     class_code, expression, section_number, teacher_id, section_id, term_id, school_id, build_id, period
+
+    Optional:
+    - day, mod: numeric meeting coordinates used for expression generation
+    - tied: tied/untied flag. Defaults to tied.
     """
-    templates_by_key: dict[
-        tuple[str, str, str, str, str, str, str, str],
-        dict[str, object],
-    ] = {}
 
     def _to_int(raw: str) -> int:
         try:
             return int(raw)
         except (TypeError, ValueError):
             return 0
+
+    grouped: dict[tuple[str, str, str, str, str, str, str, str, bool], dict[str, object]] = {}
+    ungrouped: list[tuple[tuple[str, str, str, str, str, str, str, str, bool], dict[str, object]]] = []
 
     with path.open(newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f, delimiter="\t")
@@ -197,6 +200,12 @@ def load_section_templates(path: Path) -> dict[str, list[SectionTemplate]]:
             school_id = (row.get("school_id") or "25").strip()
             build_id = (row.get("build_id") or "").strip()
             period = (row.get("period") or "").strip()
+            tied_raw = (row.get("tied") or "").strip().lower()
+            tied = tied_raw not in {"untied", "false", "0", "n", "no"}
+
+            day = _to_int((row.get("day") or "").strip())
+            mod = _to_int((row.get("mod") or "").strip())
+            meetings = {(day, mod)} if day > 0 and mod > 0 else set()
 
             key = (
                 class_code,
@@ -207,26 +216,23 @@ def load_section_templates(path: Path) -> dict[str, list[SectionTemplate]]:
                 school_id,
                 build_id,
                 period,
+                tied,
             )
-            if key not in templates_by_key:
-                templates_by_key[key] = {
-                    "expression": expression,
-                    "meetings": set(),
-                }
-            if expression and not templates_by_key[key]["expression"]:
-                templates_by_key[key]["expression"] = expression
 
-            day_raw = (row.get("day") or "").strip()
-            mod_raw = (row.get("mod") or "").strip()
-            day = _to_int(day_raw)
-            mod = _to_int(mod_raw)
-            if day > 0 and mod > 0:
-                meetings = templates_by_key[key]["meetings"]
-                assert isinstance(meetings, set)
-                meetings.add((day, mod))
+            if tied:
+                if key not in grouped:
+                    grouped[key] = {"expression": expression, "meetings": set()}
+                if expression and not grouped[key]["expression"]:
+                    grouped[key]["expression"] = expression
+                grouped_meetings = grouped[key]["meetings"]
+                assert isinstance(grouped_meetings, set)
+                grouped_meetings.update(meetings)
+            else:
+                ungrouped.append((key, {"expression": expression, "meetings": meetings}))
 
     templates: dict[str, list[SectionTemplate]] = {}
-    for key, value in templates_by_key.items():
+
+    def _append_template(key: tuple[str, str, str, str, str, str, str, str, bool], value: dict[str, object]) -> None:
         (
             class_code,
             section_number,
@@ -236,10 +242,10 @@ def load_section_templates(path: Path) -> dict[str, list[SectionTemplate]]:
             school_id,
             build_id,
             period,
+            tied,
         ) = key
         expression = value["expression"] if isinstance(value["expression"], str) else ""
         meetings_value = value["meetings"] if isinstance(value["meetings"], set) else set()
-        meetings = tuple(sorted(meetings_value))
         template = SectionTemplate(
             class_code=class_code,
             expression=expression,
@@ -250,8 +256,14 @@ def load_section_templates(path: Path) -> dict[str, list[SectionTemplate]]:
             school_id=school_id,
             build_id=build_id,
             period=period,
-            meetings=meetings,
+            meetings=tuple(sorted(meetings_value)),
+            tied=tied,
         )
         templates.setdefault(class_code, []).append(template)
+
+    for key, value in grouped.items():
+        _append_template(key, value)
+    for key, value in ungrouped:
+        _append_template(key, value)
 
     return templates
