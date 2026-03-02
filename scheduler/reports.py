@@ -4,7 +4,8 @@ import csv
 import io
 from pathlib import Path
 
-from scheduler.models import Assignment, Conflict, Course, Student
+from scheduler.expression import build_expression_from_meetings
+from scheduler.models import Assignment, Conflict, Course, SectionTemplate, Student
 
 
 def _semester_display(course: Course) -> str:
@@ -86,3 +87,54 @@ def conflicts_csv_string(
         student_name = student.name if student else ""
         writer.writerow([c.student_id, student_name, c.class_code, c.reason])
     return buf.getvalue()
+
+
+def write_schedulecc_csv(
+    path: Path,
+    assignments: list[Assignment],
+    section_templates: dict[str, list[SectionTemplate]],
+    starting_dcid: int = 1,
+) -> None:
+    """Write PowerSchool-style ScheduleCC export from assignments and section templates."""
+    headers = [
+        "SCHEDULECC.dcid",
+        "SCHEDULECC.BuildID",
+        "SCHEDULECC.Course_Number",
+        "SCHEDULECC.Expression",
+        "SCHEDULECC.Period",
+        "SCHEDULECC.SchoolID",
+        "SCHEDULECC.Section_Number",
+        "SCHEDULECC.TermID",
+        "SCHEDULECC.StudentID",
+        "SCHEDULECC.SectionID",
+        "SCHEDULECC.TeacherID",
+    ]
+    with path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f, delimiter="\t", quoting=csv.QUOTE_ALL)
+        writer.writerow(headers)
+        dcid = starting_dcid
+        usage_by_class: dict[str, int] = {}
+        for assignment in assignments:
+            templates = section_templates.get(assignment.class_code)
+            if not templates:
+                continue
+            index = usage_by_class.get(assignment.class_code, 0)
+            template = templates[index % len(templates)]
+            usage_by_class[assignment.class_code] = index + 1
+            writer.writerow(
+                [
+                    str(dcid),
+                    template.build_id,
+                    assignment.class_code,
+                    template.expression
+                    or build_expression_from_meetings(list(template.meetings)),
+                    template.period,
+                    template.school_id,
+                    template.section_number,
+                    template.term_id,
+                    assignment.student_id,
+                    template.section_id,
+                    template.teacher_id,
+                ]
+            )
+            dcid += 1

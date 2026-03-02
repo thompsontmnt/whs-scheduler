@@ -37,3 +37,20 @@ class Conflict:
     student_id: str
     class_code: str
     reason: str
+
+
+@dataclass(frozen=True)
+class SectionTemplate:
+    """PowerSchool-importable section metadata keyed by class_code."""
+
+    class_code: str
+    expression: str
+    section_number: str
+    teacher_id: str
+    section_id: str
+    term_id: str = ""
+    school_id: str = "25"
+    build_id: str = ""
+    period: str = ""
+    meetings: tuple[tuple[int, int], ...] = ()
+    tied: bool = True
