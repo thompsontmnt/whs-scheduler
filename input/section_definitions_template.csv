@@ -1,0 +1,4 @@
+class_code,expression,section_number,teacher_id,section_id,term_id,build_id,period,date_enrolled,date_left,max_enrollment,room,section_type,day,mod,tied
+1920,,1,22793,314419,3501,3558,,44928,45072,25,201,,1,2,tied
+1920,,1,22793,314419,3501,3558,,44928,45072,25,201,,2,2,tied
+1920LG,2(B),101,18838,314420,3501,3558,,44928,45072,200,AUDI,,2,2,tied

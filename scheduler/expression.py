@@ -25,14 +25,14 @@ def _contiguous_ranges(values: list[int]) -> list[tuple[int, int]]:
 
 def _collapse_days(days: list[int]) -> str:
     """Collapse sorted day numbers to PowerSchool day letters/ranges."""
-    mapped = [_DAY_CODE[d] for d in days if d in _DAY_CODE]
-    if not mapped:
+    valid_days = sorted({day for day in days if day in _DAY_CODE})
+    if not valid_days:
         return ""
     # convert contiguous based on numeric day, then map to letters
     parts: list[str] = []
-    start = days[0]
-    prev = days[0]
-    for value in days[1:]:
+    start = valid_days[0]
+    prev = valid_days[0]
+    for value in valid_days[1:]:
         if value == prev + 1:
             prev = value
             continue

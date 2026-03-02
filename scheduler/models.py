@@ -52,5 +52,10 @@ class SectionTemplate:
     school_id: str = "25"
     build_id: str = ""
     period: str = ""
+    date_enrolled: str = ""
+    date_left: str = ""
+    max_enrollment: str = ""
+    room: str = ""
+    section_type: str = ""
     meetings: tuple[tuple[int, int], ...] = ()
     tied: bool = True
