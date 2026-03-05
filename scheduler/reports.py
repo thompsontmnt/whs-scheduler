@@ -100,14 +100,19 @@ def write_schedulecc_csv(
         "SCHEDULECC.dcid",
         "SCHEDULECC.BuildID",
         "SCHEDULECC.Course_Number",
+        "SCHEDULECC.DateEnrolled",
+        "SCHEDULECC.DateLeft",
         "SCHEDULECC.Expression",
         "SCHEDULECC.Period",
         "SCHEDULECC.SchoolID",
         "SCHEDULECC.Section_Number",
+        "SCHEDULECC.SectionType",
         "SCHEDULECC.TermID",
         "SCHEDULECC.StudentID",
         "SCHEDULECC.SectionID",
         "SCHEDULECC.TeacherID",
+        "SCHEDULECC.MaxEnrollment",
+        "SCHEDULECC.Room",
     ]
     with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f, delimiter="\t", quoting=csv.QUOTE_ALL)
@@ -126,15 +131,20 @@ def write_schedulecc_csv(
                     str(dcid),
                     template.build_id,
                     assignment.class_code,
+                    template.date_enrolled,
+                    template.date_left,
                     template.expression
                     or build_expression_from_meetings(list(template.meetings)),
                     template.period,
                     template.school_id,
                     template.section_number,
+                    template.section_type,
                     template.term_id,
                     assignment.student_id,
                     template.section_id,
                     template.teacher_id,
+                    template.max_enrollment,
+                    template.room,
                 ]
             )
             dcid += 1

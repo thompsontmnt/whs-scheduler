@@ -26,6 +26,16 @@ class ExpressionTests(unittest.TestCase):
         expr = build_expression_from_meetings([(1, 1), (3, 1), (2, 2), (3, 2)])
         self.assertEqual(expr, "1(A,C) 2(B-C)")
 
+    def test_owner_example_mixed_ranges(self):
+        expr = build_expression_from_meetings(
+            [(1, 2), (2, 2), (3, 2), (4, 2), (5, 2), (2, 4), (5, 4), (2, 5), (5, 5), (2, 6), (5, 6)]
+        )
+        self.assertEqual(expr, "2(A-E) 4-6(B,E)")
+
+    def test_ignores_invalid_day_codes(self):
+        expr = build_expression_from_meetings([(6, 2), (1, 2), (2, 2), (0, 2)])
+        self.assertEqual(expr, "2(A-B)")
+
 
 if __name__ == "__main__":
     unittest.main()

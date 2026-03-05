@@ -173,6 +173,7 @@ def load_section_templates(path: Path) -> dict[str, list[SectionTemplate]]:
     class_code, expression, section_number, teacher_id, section_id, term_id, school_id, build_id, period
 
     Optional:
+    - date_enrolled, date_left, max_enrollment, room, section_type: additional ScheduleCC import fields
     - day, mod: numeric meeting coordinates used for expression generation
     - tied: tied/untied flag. Defaults to tied.
     """
@@ -183,8 +184,8 @@ def load_section_templates(path: Path) -> dict[str, list[SectionTemplate]]:
         except (TypeError, ValueError):
             return 0
 
-    grouped: dict[tuple[str, str, str, str, str, str, str, str, bool], dict[str, object]] = {}
-    ungrouped: list[tuple[tuple[str, str, str, str, str, str, str, str, bool], dict[str, object]]] = []
+    grouped: dict[tuple[str, str, str, str, str, str, str, str, str, str, str, str, str, bool], dict[str, object]] = {}
+    ungrouped: list[tuple[tuple[str, str, str, str, str, str, str, str, str, str, str, str, str, bool], dict[str, object]]] = []
 
     with path.open(newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f, delimiter="\t")
@@ -200,6 +201,11 @@ def load_section_templates(path: Path) -> dict[str, list[SectionTemplate]]:
             school_id = (row.get("school_id") or "25").strip()
             build_id = (row.get("build_id") or "").strip()
             period = (row.get("period") or "").strip()
+            date_enrolled = (row.get("date_enrolled") or "").strip()
+            date_left = (row.get("date_left") or "").strip()
+            max_enrollment = (row.get("max_enrollment") or "").strip()
+            room = (row.get("room") or "").strip()
+            section_type = (row.get("section_type") or "").strip()
             tied_raw = (row.get("tied") or "").strip().lower()
             tied = tied_raw not in {"untied", "false", "0", "n", "no"}
 
@@ -216,6 +222,11 @@ def load_section_templates(path: Path) -> dict[str, list[SectionTemplate]]:
                 school_id,
                 build_id,
                 period,
+                date_enrolled,
+                date_left,
+                max_enrollment,
+                room,
+                section_type,
                 tied,
             )
 
@@ -232,7 +243,7 @@ def load_section_templates(path: Path) -> dict[str, list[SectionTemplate]]:
 
     templates: dict[str, list[SectionTemplate]] = {}
 
-    def _append_template(key: tuple[str, str, str, str, str, str, str, str, bool], value: dict[str, object]) -> None:
+    def _append_template(key: tuple[str, str, str, str, str, str, str, str, str, str, str, str, str, bool], value: dict[str, object]) -> None:
         (
             class_code,
             section_number,
@@ -242,6 +253,11 @@ def load_section_templates(path: Path) -> dict[str, list[SectionTemplate]]:
             school_id,
             build_id,
             period,
+            date_enrolled,
+            date_left,
+            max_enrollment,
+            room,
+            section_type,
             tied,
         ) = key
         expression = value["expression"] if isinstance(value["expression"], str) else ""
@@ -256,6 +272,11 @@ def load_section_templates(path: Path) -> dict[str, list[SectionTemplate]]:
             school_id=school_id,
             build_id=build_id,
             period=period,
+            date_enrolled=date_enrolled,
+            date_left=date_left,
+            max_enrollment=max_enrollment,
+            room=room,
+            section_type=section_type,
             meetings=tuple(sorted(meetings_value)),
             tied=tied,
         )
