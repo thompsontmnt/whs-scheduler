@@ -1,6 +1,7 @@
 """Build PowerSchool Expression strings from day/mod meeting data."""
 
 from collections import defaultdict
+import re
 
 _DAY_CODE = {1: "A", 2: "B", 3: "C", 4: "D", 5: "E"}
 
@@ -86,3 +87,43 @@ def build_expression_from_meetings(meetings: list[tuple[int, int]]) -> str:
     tokens = [token for _, token in sorted(token_parts, key=lambda t: (t[0], t[1]))]
 
     return " ".join(tokens)
+
+
+_DAY_REVERSE = {value: key for key, value in _DAY_CODE.items()}
+_TOKEN_RE = re.compile(r"^(\d+(?:-\d+)?)\(([A-E](?:-[A-E])?(?:,[A-E](?:-[A-E])?)*)\)$")
+
+
+def parse_expression_to_meetings(expression: str) -> tuple[tuple[int, int], ...]:
+    """Parse PowerSchool expression text to normalized (day, mod) meetings."""
+    meetings: set[tuple[int, int]] = set()
+    for token in expression.strip().split():
+        match = _TOKEN_RE.match(token)
+        if not match:
+            continue
+        mod_part, day_part = match.groups()
+        mod_values: list[int] = []
+        if "-" in mod_part:
+            start, end = mod_part.split("-", 1)
+            mod_values.extend(range(int(start), int(end) + 1))
+        else:
+            mod_values.append(int(mod_part))
+
+        day_values: list[int] = []
+        for day_token in day_part.split(","):
+            if "-" in day_token:
+                start_label, end_label = day_token.split("-", 1)
+                start_day = _DAY_REVERSE.get(start_label)
+                end_day = _DAY_REVERSE.get(end_label)
+                if start_day is None or end_day is None:
+                    continue
+                day_values.extend(range(start_day, end_day + 1))
+            else:
+                day_number = _DAY_REVERSE.get(day_token)
+                if day_number is not None:
+                    day_values.append(day_number)
+
+        for mod in mod_values:
+            for day in day_values:
+                meetings.add((day, mod))
+
+    return tuple(sorted(meetings))

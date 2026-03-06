@@ -59,3 +59,36 @@ class SectionTemplate:
     section_type: str = ""
     meetings: tuple[tuple[int, int], ...] = ()
     tied: bool = True
+
+
+@dataclass(frozen=True)
+class SectionOffering:
+    """Concrete section offering used for assignment and ScheduleCC export."""
+
+    class_code: str
+    section_number: str
+    teacher_id: str
+    section_id: str
+    term_id: str
+    expression: str
+    meetings: tuple[tuple[int, int], ...]
+    room: str = ""
+    max_enrollment: int = 0
+    school_id: str = "25"
+    build_id: str = ""
+    date_enrolled: str = ""
+    date_left: str = ""
+    section_type: str = ""
+    tied: bool = True
+    phase: int = 0
+
+
+@dataclass(frozen=True)
+class SectionAssignment:
+    """Student placed into a concrete section offering."""
+
+    student_id: str
+    class_code: str
+    section_number: str
+    section_id: str
+    teacher_id: str

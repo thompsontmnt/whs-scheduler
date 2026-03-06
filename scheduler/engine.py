@@ -4,7 +4,7 @@ Modular schedule: students may enroll in multiple courses per semester.
 Only capacity and reference validity are enforced (no semester-overlap rule).
 """
 
-from scheduler.models import Assignment, Conflict, Course, Request, Student
+from scheduler.models import Assignment, Conflict, Course, Request, SectionAssignment, SectionOffering, Student
 
 
 def _request_sort_key(
@@ -102,3 +102,85 @@ class Scheduler:
             key=(lambda c: (c.student_id, c.class_code)),
         )
         return (assignments_sorted, conflicts_sorted)
+
+    def schedule_sections(
+        self,
+        students: dict[str, Student],
+        requests: list[Request],
+        courses: dict[str, Course],
+        offerings: dict[str, list[SectionOffering]],
+    ) -> tuple[list[SectionAssignment], list[Conflict]]:
+        """Assign students to concrete section offerings with overlap/capacity checks."""
+        sorted_requests = sorted(requests, key=lambda r: _request_sort_key(r, students, courses))
+        assignments: list[SectionAssignment] = []
+        conflicts: list[Conflict] = []
+
+        enrollment: dict[str, int] = {}
+        student_meetings: dict[str, set[tuple[int, int]]] = {}
+        blocked_offerings = _invalid_offerings(offerings)
+
+        for request in sorted_requests:
+            if request.student_id not in students:
+                conflicts.append(Conflict(request.student_id, request.class_code, "Student not found"))
+                continue
+            if request.class_code not in courses:
+                conflicts.append(Conflict(request.student_id, request.class_code, "Course not found"))
+                continue
+
+            candidate_offerings = offerings.get(request.class_code, [])
+            if not candidate_offerings:
+                conflicts.append(Conflict(request.student_id, request.class_code, "No section offering"))
+                continue
+
+            placed = False
+            meetings = student_meetings.setdefault(request.student_id, set())
+            for offering in candidate_offerings:
+                if offering.section_id in blocked_offerings:
+                    continue
+                if offering.max_enrollment > 0 and enrollment.get(offering.section_id, 0) >= offering.max_enrollment:
+                    continue
+                if offering.meetings and meetings.intersection(offering.meetings):
+                    continue
+
+                assignments.append(
+                    SectionAssignment(
+                        student_id=request.student_id,
+                        class_code=request.class_code,
+                        section_number=offering.section_number,
+                        section_id=offering.section_id,
+                        teacher_id=offering.teacher_id,
+                    )
+                )
+                enrollment[offering.section_id] = enrollment.get(offering.section_id, 0) + 1
+                meetings.update(offering.meetings)
+                placed = True
+                break
+
+            if not placed:
+                conflicts.append(Conflict(request.student_id, request.class_code, "No available non-conflicting section"))
+
+        return (
+            sorted(assignments, key=lambda a: (a.student_id, a.class_code, a.section_number, a.section_id)),
+            sorted(conflicts, key=lambda c: (c.student_id, c.class_code, c.reason)),
+        )
+
+
+def _has_overlap(left: tuple[tuple[int, int], ...], right: tuple[tuple[int, int], ...]) -> bool:
+    return bool(set(left).intersection(right))
+
+
+def _invalid_offerings(offerings: dict[str, list[SectionOffering]]) -> set[str]:
+    """Offerings that violate teacher/room exclusivity at the same time."""
+    all_offerings = [offering for rows in offerings.values() for offering in rows]
+    invalid: set[str] = set()
+    for i, first in enumerate(all_offerings):
+        for second in all_offerings[i + 1 :]:
+            if not _has_overlap(first.meetings, second.meetings):
+                continue
+            if first.teacher_id and first.teacher_id == second.teacher_id:
+                invalid.add(first.section_id)
+                invalid.add(second.section_id)
+            if first.room and second.room and first.room == second.room:
+                invalid.add(first.section_id)
+                invalid.add(second.section_id)
+    return invalid
