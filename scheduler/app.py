@@ -132,10 +132,10 @@ _INDEX_HTML = """<!DOCTYPE html>
   <div id=\"result\">
     <p id=\"summary\"></p>
     <p>
-      <a id=\"dl-schedulecc\" href=\"#\" download=\"schedulecc.csv\">Download schedulecc.csv</a>
-      <a id=\"dl-dropped\" href=\"#\" download=\"dropped_by_reason.csv\">Download dropped_by_reason.csv</a>
-      <a id=\"dl-conflicts\" href=\"#\" download=\"conflicts.csv\">Download conflicts.csv</a>
-      <a id=\"dl-assignments\" href=\"#\" download=\"assignments.csv\">Download assignments.csv</a>
+      <a id=\"dl-schedulecc\" href=\"#\" download=\"schedulecc.txt\">Download schedulecc.txt</a>
+      <a id=\"dl-dropped\" href=\"#\" download=\"dropped_by_reason.txt\">Download dropped_by_reason.txt</a>
+      <a id=\"dl-conflicts\" href=\"#\" download=\"conflicts.txt\">Download conflicts.txt</a>
+      <a id=\"dl-assignments\" href=\"#\" download=\"assignments.txt\">Download assignments.txt</a>
     </p>
   </div>
 
@@ -168,10 +168,10 @@ _INDEX_HTML = """<!DOCTYPE html>
         const s = data.summary;
         summary.textContent = `${s.assignments} assignments, ${s.conflicts} conflicts, ${s.dropped} dropped (${s.students} students, ${s.courses} courses).`;
 
-        dlSchedulecc.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(data.schedulecc_csv);
-        dlDropped.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(data.dropped_by_reason_csv);
-        dlConflicts.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(data.conflicts_csv);
-        dlAssignments.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(data.assignments_csv);
+        dlSchedulecc.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(data.schedulecc_csv);
+        dlDropped.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(data.dropped_by_reason_csv);
+        dlConflicts.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(data.conflicts_csv);
+        dlAssignments.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(data.assignments_csv);
 
         result.classList.add('show');
       } catch (err) {

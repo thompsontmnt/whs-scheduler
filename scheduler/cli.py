@@ -137,8 +137,8 @@ def main() -> None:
 
     scheduler = Scheduler(capacity_by_class=capacity_by_class)
 
-    assignments_path = args.output_dir / "assignments.csv"
-    conflicts_path = args.output_dir / "conflicts.csv"
+    assignments_path = args.output_dir / "assignments.txt"
+    conflicts_path = args.output_dir / "conflicts.txt"
 
     if args.section_offerings is not None and args.section_offerings.exists():
         offerings = load_section_offerings(args.section_offerings)
@@ -151,8 +151,8 @@ def main() -> None:
         ]
         write_assignments_csv(assignments_path, class_assignments, students, courses)
         write_conflicts_csv(conflicts_path, conflicts, students)
-        schedulecc_path = args.output_dir / "schedulecc.csv"
-        dropped_path = args.output_dir / "dropped_by_reason.csv"
+        schedulecc_path = args.output_dir / "schedulecc.txt"
+        dropped_path = args.output_dir / "dropped_by_reason.txt"
         write_schedulecc_csv_from_sections(schedulecc_path, section_assignments, offerings)
         write_dropped_by_reason_csv(dropped_path, dropped_rows, students)
         print(f"Wrote {assignments_path} ({len(class_assignments)} assignments)")
@@ -169,10 +169,9 @@ def main() -> None:
 
         if args.section_templates is not None and args.section_templates.exists():
             section_templates = load_section_templates(args.section_templates)
-            schedulecc_path = args.output_dir / "schedulecc.csv"
+            schedulecc_path = args.output_dir / "schedulecc.txt"
             write_schedulecc_csv(schedulecc_path, assignments, section_templates)
             print(f"Wrote {schedulecc_path}")
-        print(f"Wrote {dropped_path} ({len(dropped_rows)} dropped requests)")
 
 
 if __name__ == "__main__":
