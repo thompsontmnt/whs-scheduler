@@ -12,6 +12,10 @@ _REQEXPORT_MIN_COLS = 7
 _REQEXPORT_HEADER_FIRST = "Student Name"
 _REQEXPORT_REQUEST_TYPE_INDEX = 10
 
+# Request families where duplicate weekday variants should be interpreted as semester split
+# and deferred from the Sem 1 run when not selected.
+_AUTO_SEMESTER_BASE_CODES = {"2912"}
+
 
 def _infer_semester_from_course_name(course_name: str) -> tuple[str, str]:
     """Infer (duration_flag, semester_flag) from course name. reqexport has no F1 field:
@@ -471,10 +475,12 @@ def reconcile_requests_to_offerings(
         existing_suffix = existing_match.group(2) if existing_match else ""
         existing_suffix = existing_suffix or ""
         if priority.get(suffix, 99) < priority.get(existing_suffix, 99):
-            dropped_rows.append((existing.student_id, existing.class_code, "weekday_variant_collapsed", request.class_code))
+            reason = "lunch_auto_semester2" if base in _AUTO_SEMESTER_BASE_CODES else "weekday_variant_collapsed"
+            dropped_rows.append((existing.student_id, existing.class_code, reason, request.class_code))
             by_student_family[key] = request
         else:
-            dropped_rows.append((request.student_id, request.class_code, "weekday_variant_collapsed", existing.class_code))
+            reason = "lunch_auto_semester2" if base in _AUTO_SEMESTER_BASE_CODES else "weekday_variant_collapsed"
+            dropped_rows.append((request.student_id, request.class_code, reason, existing.class_code))
 
     normalized = passthrough + list(by_student_family.values())
     normalized_sorted = sorted(normalized, key=lambda r: (r.student_id, r.class_code))

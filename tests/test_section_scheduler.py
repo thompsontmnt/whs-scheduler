@@ -45,8 +45,8 @@ class SectionSchedulerTests(unittest.TestCase):
     def test_reconcile_requests_drops_missing_and_variant_duplicates(self):
         offerings_text = (
             "TermID\tCourse_Number\tTeacher\tExpression\tSection_Number\tRoom\tMaxEnrollment\tTied\tPhase\n"
-            "3500\t2912\t100\t\"1(A)\"\t1\t101\t10\t1\t1\n"
-            "3500\t2912Tu\t101\t\"2(A)\"\t1\t101\t10\t1\t1\n"
+            "3500\t5000\t100\t\"1(A)\"\t1\t101\t10\t1\t1\n"
+            "3500\t5000Tu\t101\t\"2(A)\"\t1\t101\t10\t1\t1\n"
             "3500\t1001\t200\t\"2(B)\"\t1\t102\t10\t1\t1\n"
         )
         with tempfile.TemporaryDirectory() as d:
@@ -54,15 +54,33 @@ class SectionSchedulerTests(unittest.TestCase):
             path.write_text(offerings_text, encoding="utf-8")
             offerings = load_section_offerings(path)
             requests = [
-                Request("1", "2912Tu"),
-                Request("1", "2912"),
+                Request("1", "5000Tu"),
+                Request("1", "5000"),
                 Request("1", "9999"),
                 Request("1", "1001"),
             ]
             normalized, dropped_rows = reconcile_requests_to_offerings(requests, offerings)
             self.assertEqual(len(dropped_rows), 2)
-            self.assertEqual([(r.student_id, r.class_code) for r in normalized], [("1", "1001"), ("1", "2912")])
+            self.assertEqual([(r.student_id, r.class_code) for r in normalized], [("1", "1001"), ("1", "5000")])
             self.assertEqual({row[2] for row in dropped_rows}, {"no_section_offering", "weekday_variant_collapsed"})
+
+
+    def test_reconcile_lunch_family_marks_auto_semester2(self):
+        offerings_text = (
+            "TermID\tCourse_Number\tTeacher\tExpression\tSection_Number\tRoom\tMaxEnrollment\tTied\tPhase\n"
+            "3500\t2912\t100\t\"1(A)\"\t1\t101\t10\t1\t1\n"
+            "3500\t2912Tu\t100\t\"1(B)\"\t1\t101\t10\t1\t1\n"
+        )
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "offerings.txt"
+            path.write_text(offerings_text, encoding="utf-8")
+            offerings = load_section_offerings(path)
+            requests = [Request("1", "2912"), Request("1", "2912Tu")]
+            normalized, dropped_rows = reconcile_requests_to_offerings(requests, offerings)
+            self.assertEqual(len(normalized), 1)
+            self.assertEqual(normalized[0].class_code, "2912")
+            self.assertEqual(len(dropped_rows), 1)
+            self.assertEqual(dropped_rows[0][2], "lunch_auto_semester2")
 
     def test_load_offerings_and_schedule_with_overlap_and_capacity(self):
         offerings_text = (

@@ -83,10 +83,10 @@ Supported constraints in this mode:
 - Per-section capacity via `MaxEnrollment`.
 - Teacher/room exclusivity at overlapping meeting times (conflicting offerings are excluded).
 - Requests for non-offered course codes are dropped during reconciliation.
-- Weekday variant requests in the same family (for example `2912`, `2912Tu`, `2912W`, `2912Th`, `2912F`) are collapsed to one request per student.
+- Weekday variant requests in the same family are collapsed to one request per student; for lunch family `2912*`, dropped variants are labeled `lunch_auto_semester2` to represent inferred Sem 2 placement.
 
 You can pair this with `--requests-export` (for example `input/new/ScheduleRequests.export.txt`) so requests come from `Student_Number` + `CourseNumber`.
 
 If `--reqexport` is omitted, the CLI now builds minimal student references from `ScheduleRequests.export` and minimal course references from `--section-offerings`, so these two `input/new` files are sufficient for scheduling/export.
 
-In section-offerings mode, the CLI also writes `dropped_by_reason.txt` with columns `student_id, student_name, class_code, reason, detail` (for example `no_section_offering` and `weekday_variant_collapsed`) to support PO data review and section-adjustment planning.
+In section-offerings mode, the CLI also writes `dropped_by_reason.txt` with columns `student_id, student_name, class_code, reason, detail` (for example `no_section_offering`, `weekday_variant_collapsed`, and `lunch_auto_semester2`) to support PO data review and section-adjustment planning.
