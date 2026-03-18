@@ -3,13 +3,20 @@
 import csv
 from pathlib import Path
 
-from scheduler.models import Course, Request, SectionTemplate, Student
+from scheduler.expression import parse_expression_to_meetings
+from scheduler.models import Course, Request, SectionOffering, SectionTemplate, Student
 
 
 # reqexport.txt columns (0-indexed): Student Name, Student Number, Next Grade, School, Dept, Course #, Course_Name, ...
 _REQEXPORT_MIN_COLS = 7
 _REQEXPORT_HEADER_FIRST = "Student Name"
 _REQEXPORT_REQUEST_TYPE_INDEX = 10
+
+# Request families where duplicate weekday variants should be interpreted as
+# "keep one request in the current scheduling run and defer the duplicate to S2".
+# This mirrors the PowerSchool lunch behavior closely enough for this scheduler
+# until the request export carries explicit semester designation for lunch rows.
+_AUTO_SEMESTER_BASE_CODES = {"2912"}
 
 
 def _infer_semester_from_course_name(course_name: str) -> tuple[str, str]:
@@ -288,3 +295,198 @@ def load_section_templates(path: Path) -> dict[str, list[SectionTemplate]]:
         _append_template(key, value)
 
     return templates
+
+
+def load_requests_export(path: Path) -> list[Request]:
+    """Load PowerSchool ScheduleRequests.export format (tab-delimited)."""
+    requests: list[Request] = []
+    seen: set[tuple[str, str]] = set()
+    with path.open(newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f, delimiter="	")
+        for row in reader:
+            student_number = (row.get("Student_Number") or "").strip()
+            course_number = (row.get("CourseNumber") or "").strip()
+            if not student_number or not course_number:
+                continue
+            pair = (student_number, course_number)
+            if pair in seen:
+                continue
+            seen.add(pair)
+            requests.append(Request(student_id=student_number, class_code=course_number))
+    return requests
+
+
+def load_section_offerings(path: Path) -> dict[str, list[SectionOffering]]:
+    """Load section offerings from schedule export (tab-delimited)."""
+    offerings: dict[str, list[SectionOffering]] = {}
+    with path.open(newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f, delimiter="	")
+        for row in reader:
+            class_code = (row.get("Course_Number") or "").strip()
+            if not class_code:
+                continue
+            section_number = (row.get("Section_Number") or "").strip()
+            teacher_id = (row.get("Teacher") or "").strip()
+            term_id = (row.get("TermID") or "").strip()
+            expression = (row.get("Expression") or "").strip().strip('"')
+            room = (row.get("Room") or "").strip()
+            section_type = (row.get("GradebookType") or "").strip()
+            tied_raw = (row.get("Tied") or "").strip()
+            tied = tied_raw not in {"0", "false", "False", "N", "n", "no", "No"}
+            school_id = (row.get("SchoolID") or "25").strip() or "25"
+            build_id = (row.get("BuildID") or "").strip()
+            max_raw = (row.get("MaxEnrollment") or "").strip()
+            phase_raw = (row.get("Phase") or "0").strip()
+            section_id = (row.get("SectionID") or f"{term_id}-{class_code}-{section_number}").strip()
+            try:
+                max_enrollment = int(max_raw) if max_raw else 0
+            except ValueError:
+                max_enrollment = 0
+            try:
+                phase = int(phase_raw) if phase_raw else 0
+            except ValueError:
+                phase = 0
+
+            offerings.setdefault(class_code, []).append(
+                SectionOffering(
+                    class_code=class_code,
+                    section_number=section_number,
+                    teacher_id=teacher_id,
+                    section_id=section_id,
+                    term_id=term_id,
+                    expression=expression,
+                    meetings=parse_expression_to_meetings(expression),
+                    room=room,
+                    max_enrollment=max_enrollment,
+                    school_id=school_id,
+                    build_id=build_id,
+                    section_type=section_type,
+                    tied=tied,
+                    phase=phase,
+                )
+            )
+
+    for class_code, rows in offerings.items():
+        offerings[class_code] = sorted(
+            rows,
+            key=lambda o: (o.phase, o.section_number, o.teacher_id, o.section_id),
+        )
+    return offerings
+
+
+def load_students_from_requests_export(path: Path) -> dict[str, Student]:
+    """Build minimal students map from ScheduleRequests.export Student_Number values."""
+    students: dict[str, Student] = {}
+    with path.open(newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f, delimiter="	")
+        for row in reader:
+            student_number = (row.get("Student_Number") or "").strip()
+            if not student_number or student_number in students:
+                continue
+            students[student_number] = Student(
+                student_id=student_number,
+                name="",
+                gender="",
+                grad_year=0,
+            )
+    return students
+
+
+def load_courses_from_section_offerings(path: Path) -> dict[str, Course]:
+    """Build minimal course catalog from section offerings Course_Number values."""
+    courses: dict[str, Course] = {}
+    with path.open(newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f, delimiter="	")
+        for row in reader:
+            class_code = (row.get("Course_Number") or "").strip()
+            if not class_code:
+                continue
+            if class_code not in courses:
+                courses[class_code] = Course(
+                    class_code=class_code,
+                    dept_code="",
+                    name=class_code,
+                    duration_flag="S1",
+                    semester_flag="S1",
+                )
+    return courses
+
+
+def load_courses_from_requests_export(path: Path) -> dict[str, Course]:
+    """Build minimal course catalog from ScheduleRequests.export CourseNumber values."""
+    courses: dict[str, Course] = {}
+    with path.open(newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f, delimiter="\t")
+        for row in reader:
+            class_code = (row.get("CourseNumber") or "").strip()
+            if not class_code or class_code in courses:
+                continue
+            courses[class_code] = Course(
+                class_code=class_code,
+                dept_code="",
+                name=class_code,
+                duration_flag="S1",
+                semester_flag="S1",
+            )
+    return courses
+
+
+def reconcile_requests_to_offerings(
+    requests: list[Request],
+    offerings: dict[str, list[SectionOffering]],
+) -> tuple[list[Request], list[tuple[str, str, str, str]]]:
+    """Normalize requests for section-offering scheduling.
+
+    - Drop requests for class codes with no offerings.
+    - Collapse weekday variant families (e.g., 2912, 2912Tu, 2912W, 2912Th, 2912F)
+      to at most one request per student/base family.
+    - For lunch-family base codes in _AUTO_SEMESTER_BASE_CODES, interpret dropped
+      duplicates as automatically deferred to semester 2.
+    Returns (normalized_requests, dropped_rows).
+
+    dropped_rows tuple format: (student_id, class_code, reason, detail)
+    """
+    import re
+
+    offered_codes = set(offerings.keys())
+    family_re = re.compile(r"^(\d+)(Tu|Th|W|F)?$")
+    priority = {"": 0, "Tu": 1, "W": 2, "Th": 3, "F": 4}
+
+    filtered: list[Request] = []
+    dropped_rows: list[tuple[str, str, str, str]] = []
+    for request in requests:
+        if request.class_code not in offered_codes:
+            dropped_rows.append((request.student_id, request.class_code, "no_section_offering", ""))
+            continue
+        filtered.append(request)
+
+    by_student_family: dict[tuple[str, str], Request] = {}
+    passthrough: list[Request] = []
+
+    for request in filtered:
+        match = family_re.match(request.class_code)
+        if not match:
+            passthrough.append(request)
+            continue
+        base, suffix = match.groups()
+        suffix = suffix or ""
+        key = (request.student_id, base)
+        existing = by_student_family.get(key)
+        if existing is None:
+            by_student_family[key] = request
+            continue
+        existing_match = family_re.match(existing.class_code)
+        existing_suffix = existing_match.group(2) if existing_match else ""
+        existing_suffix = existing_suffix or ""
+        if priority.get(suffix, 99) < priority.get(existing_suffix, 99):
+            reason = "lunch_auto_semester2" if base in _AUTO_SEMESTER_BASE_CODES else "weekday_variant_collapsed"
+            dropped_rows.append((existing.student_id, existing.class_code, reason, request.class_code))
+            by_student_family[key] = request
+        else:
+            reason = "lunch_auto_semester2" if base in _AUTO_SEMESTER_BASE_CODES else "weekday_variant_collapsed"
+            dropped_rows.append((request.student_id, request.class_code, reason, existing.class_code))
+
+    normalized = passthrough + list(by_student_family.values())
+    normalized_sorted = sorted(normalized, key=lambda r: (r.student_id, r.class_code))
+    dropped_sorted = sorted(dropped_rows, key=lambda row: (row[0], row[1], row[2], row[3]))
+    return (normalized_sorted, dropped_sorted)

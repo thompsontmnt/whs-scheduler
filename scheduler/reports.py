@@ -5,7 +5,7 @@ import io
 from pathlib import Path
 
 from scheduler.expression import build_expression_from_meetings
-from scheduler.models import Assignment, Conflict, Course, SectionTemplate, Student
+from scheduler.models import Assignment, Conflict, Course, SectionAssignment, SectionOffering, SectionTemplate, Student
 
 
 def _semester_display(course: Course) -> str:
@@ -52,6 +52,22 @@ def write_conflicts_csv(
             student_name = student.name if student else ""
             writer.writerow([c.student_id, student_name, c.class_code, c.reason])
 
+
+
+
+def write_dropped_by_reason_csv(
+    path: Path,
+    dropped_rows: list[tuple[str, str, str, str]],
+    students: dict[str, Student],
+) -> None:
+    """Write dropped_by_reason.csv for reconciled-away requests."""
+    with path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["student_id", "student_name", "class_code", "reason", "detail"])
+        for student_id, class_code, reason, detail in dropped_rows:
+            student = students.get(student_id)
+            student_name = student.name if student else ""
+            writer.writerow([student_id, student_name, class_code, reason, detail])
 
 def assignments_csv_string(
     assignments: list[Assignment],
@@ -147,4 +163,59 @@ def write_schedulecc_csv(
                     template.room,
                 ]
             )
+            dcid += 1
+
+
+def write_schedulecc_csv_from_sections(
+    path: Path,
+    assignments: list[SectionAssignment],
+    offerings: dict[str, list[SectionOffering]],
+    starting_dcid: int = 1,
+) -> None:
+    """Write schedulecc.csv from concrete section assignments."""
+    headers = [
+        "SCHEDULECC.dcid",
+        "SCHEDULECC.BuildID",
+        "SCHEDULECC.Course_Number",
+        "SCHEDULECC.DateEnrolled",
+        "SCHEDULECC.DateLeft",
+        "SCHEDULECC.Expression",
+        "SCHEDULECC.Period",
+        "SCHEDULECC.SchoolID",
+        "SCHEDULECC.Section_Number",
+        "SCHEDULECC.SectionType",
+        "SCHEDULECC.TermID",
+        "SCHEDULECC.StudentID",
+        "SCHEDULECC.SectionID",
+        "SCHEDULECC.TeacherID",
+        "SCHEDULECC.MaxEnrollment",
+        "SCHEDULECC.Room",
+    ]
+    offering_by_id = {o.section_id: o for rows in offerings.values() for o in rows}
+    with path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f, delimiter="	", quoting=csv.QUOTE_ALL)
+        writer.writerow(headers)
+        dcid = starting_dcid
+        for assignment in assignments:
+            offering = offering_by_id.get(assignment.section_id)
+            if offering is None:
+                continue
+            writer.writerow([
+                str(dcid),
+                offering.build_id,
+                assignment.class_code,
+                offering.date_enrolled,
+                offering.date_left,
+                offering.expression or build_expression_from_meetings(list(offering.meetings)),
+                "",
+                offering.school_id,
+                offering.section_number,
+                offering.section_type,
+                offering.term_id,
+                assignment.student_id,
+                offering.section_id,
+                offering.teacher_id,
+                str(offering.max_enrollment) if offering.max_enrollment else "",
+                offering.room,
+            ])
             dcid += 1

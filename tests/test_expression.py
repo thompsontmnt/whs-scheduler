@@ -1,6 +1,6 @@
 import unittest
 
-from scheduler.expression import build_expression_from_meetings
+from scheduler.expression import build_expression_from_meetings, parse_expression_to_meetings
 
 
 class ExpressionTests(unittest.TestCase):
@@ -35,6 +35,13 @@ class ExpressionTests(unittest.TestCase):
     def test_ignores_invalid_day_codes(self):
         expr = build_expression_from_meetings([(6, 2), (1, 2), (2, 2), (0, 2)])
         self.assertEqual(expr, "2(A-B)")
+
+    def test_parse_expression_mixed_ranges(self):
+        meetings = parse_expression_to_meetings("9-10(A-B,D) 12(C)")
+        self.assertIn((1, 9), meetings)
+        self.assertIn((2, 10), meetings)
+        self.assertIn((4, 10), meetings)
+        self.assertIn((3, 12), meetings)
 
 
 if __name__ == "__main__":

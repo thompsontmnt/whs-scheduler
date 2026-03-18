@@ -11,13 +11,16 @@ python3 scheduler.py --reqexport input/reqexport.txt --output-dir .
 # With optional capacity file
 python3 scheduler.py --reqexport input/reqexport.txt --capacity capacity.txt
 
-# With section templates to produce PowerSchool-style schedulecc.csv
+# With section templates to produce PowerSchool-style schedulecc.txt
 python3 scheduler.py --reqexport input/reqexport.txt --section-templates input/section_templates.txt
+
+# Preferred: concrete section offerings + requests export (direct schedulecc placement; no reqexport needed)
+python3 scheduler.py --requests-export 'input/new/ScheduleRequests.export.txt' --section-offerings 'input/new/Sem 1 sample sked export with phases.txt' --output-dir .
 ```
 
 ## Web app
 
-Upload tab-delimited reqexport (and optional capacity file), get assignments and conflicts as CSV downloads.
+Upload two tab-delimited files (ScheduleRequests export + section offerings export), get `schedulecc.txt`, `dropped_by_reason.txt`, plus assignments/conflicts text downloads.
 
 **Install and run:**
 
@@ -26,7 +29,7 @@ pip install -r requirements.txt
 uvicorn scheduler.app:app --reload
 ```
 
-Then open http://127.0.0.1:8000 . Use the form to upload your reqexport file (and optionally a capacity file), then download `assignments.csv` and `conflicts.csv`.
+Then open http://127.0.0.1:8000 . Use the form to upload `ScheduleRequests.export.txt` and your section offerings file (for example Sem 1 export with phases), then download `schedulecc.txt`, `dropped_by_reason.txt`, `assignments.txt`, and `conflicts.txt`.
 
 ## Input
 
@@ -35,9 +38,10 @@ Then open http://127.0.0.1:8000 . Use the form to upload your reqexport file (an
 
 ## Output
 
-- **assignments.csv:** student_id, student_name, class_code, course_name, semester
-- **conflicts.csv:** student_id, student_name, class_code, reason
-- **schedulecc.csv (optional):** PowerSchool-style tab-delimited export when `--section-templates` is provided
+- **assignments.txt:** student_id, student_name, class_code, course_name, semester
+- **conflicts.txt:** student_id, student_name, class_code, reason
+- **schedulecc.txt (optional):** PowerSchool-style tab-delimited export when `--section-templates` is provided
+- **dropped_by_reason.txt (section-offerings mode):** requests removed during reconciliation before scheduling (for PO review)
 
 ## Section template input (optional)
 
@@ -53,7 +57,7 @@ Example:
 
 If `expression` is blank and `day` + `mod` rows are present for the same section, the exporter now builds expression text automatically (e.g. `1(A-B)`, `1-2(C)`).
 
-Optional import fields from your PowerSchool template (`date_enrolled`, `date_left`, `max_enrollment`, `room`, `section_type`) are carried through to `schedulecc.csv` when present.
+Optional import fields from your PowerSchool template (`date_enrolled`, `date_left`, `max_enrollment`, `room`, `section_type`) are carried through to `schedulecc.txt` when present.
 
 If multiple rows exist for a class code, assignments are distributed round-robin across those template rows.
 
@@ -68,3 +72,21 @@ Notes:
 - For `tied=untied`, rows are kept as separate expression cells instead of being merged.
 - Large-group sections should be exported as separate course rows (for example course `1920` with LG section `1920LG`).
 - BuildID and SchoolID are typically constant for a given import file; TermID is normally one value for all semester 1 sections and another for semester 2.
+
+
+## Section offerings input (preferred pipeline)
+
+When `--section-offerings` is provided, the scheduler assigns students directly to concrete section rows from a PowerSchool-style section export (for example `input/new/Sem 1 sample sked export with phases.txt`) and writes `schedulecc.txt` from those selected placements.
+
+Supported constraints in this mode:
+- Student no-overlap across meeting times parsed from `Expression`.
+- Per-section capacity via `MaxEnrollment`.
+- Limited duplicate-offering suppression for overlapping rows that share both the same teacher and the same meaningful room; teacher-only overlaps and shared/non-physical rooms are not globally excluded.
+- Requests for non-offered course codes are dropped during reconciliation.
+- Weekday variant requests in the same family are collapsed to one request per student; for lunch family `2912*`, duplicate requests are treated as automatic semester-2 deferrals and labeled `lunch_auto_semester2`.
+
+You can pair this with `--requests-export` (for example `input/new/ScheduleRequests.export.txt`) so requests come from `Student_Number` + `CourseNumber`.
+
+If `--reqexport` is omitted, the CLI now builds minimal student references from `ScheduleRequests.export` and minimal course references from `--section-offerings`, so these two `input/new` files are sufficient for scheduling/export.
+
+In section-offerings mode, the CLI also writes `dropped_by_reason.txt` with columns `student_id, student_name, class_code, reason, detail` (for example `no_section_offering`, `weekday_variant_collapsed`, and `lunch_auto_semester2`) to support PO data review and section-adjustment planning.
