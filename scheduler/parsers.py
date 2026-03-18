@@ -12,8 +12,10 @@ _REQEXPORT_MIN_COLS = 7
 _REQEXPORT_HEADER_FIRST = "Student Name"
 _REQEXPORT_REQUEST_TYPE_INDEX = 10
 
-# Request families where duplicate weekday variants should be interpreted as semester split
-# and deferred from the Sem 1 run when not selected.
+# Request families where duplicate weekday variants should be interpreted as
+# "keep one request in the current scheduling run and defer the duplicate to S2".
+# This mirrors the PowerSchool lunch behavior closely enough for this scheduler
+# until the request export carries explicit semester designation for lunch rows.
 _AUTO_SEMESTER_BASE_CODES = {"2912"}
 
 
@@ -438,6 +440,8 @@ def reconcile_requests_to_offerings(
     - Drop requests for class codes with no offerings.
     - Collapse weekday variant families (e.g., 2912, 2912Tu, 2912W, 2912Th, 2912F)
       to at most one request per student/base family.
+    - For lunch-family base codes in _AUTO_SEMESTER_BASE_CODES, interpret dropped
+      duplicates as automatically deferred to semester 2.
     Returns (normalized_requests, dropped_rows).
 
     dropped_rows tuple format: (student_id, class_code, reason, detail)

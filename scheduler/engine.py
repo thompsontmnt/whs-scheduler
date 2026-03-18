@@ -169,6 +169,11 @@ def _has_overlap(left: tuple[tuple[int, int], ...], right: tuple[tuple[int, int]
     return bool(set(left).intersection(right))
 
 
+def _is_exclusive_room(room: str) -> bool:
+    normalized = room.strip().upper()
+    return normalized not in {"", "NA", "N/A", "NONE", "TBD"}
+
+
 def _invalid_offerings(offerings: dict[str, list[SectionOffering]]) -> set[str]:
     """Offerings that violate teacher/room exclusivity at the same time."""
     all_offerings = [offering for rows in offerings.values() for offering in rows]
@@ -177,10 +182,18 @@ def _invalid_offerings(offerings: dict[str, list[SectionOffering]]) -> set[str]:
         for second in all_offerings[i + 1 :]:
             if not _has_overlap(first.meetings, second.meetings):
                 continue
-            if first.teacher_id and first.teacher_id == second.teacher_id:
-                invalid.add(first.section_id)
-                invalid.add(second.section_id)
-            if first.room and second.room and first.room == second.room:
+            same_teacher = first.teacher_id and first.teacher_id == second.teacher_id
+            same_room = (
+                _is_exclusive_room(first.room)
+                and _is_exclusive_room(second.room)
+                and first.room == second.room
+            )
+            # Only globally invalidate offerings when the overlap is a true duplicate:
+            # same teacher in the same meaningful room at the same time.
+            # Teacher-only and room-only overlaps are too aggressive for the exported
+            # PowerSchool data because many legitimate cross-listed/shared-space rows
+            # would otherwise be removed before scheduling.
+            if same_teacher and same_room:
                 invalid.add(first.section_id)
                 invalid.add(second.section_id)
     return invalid

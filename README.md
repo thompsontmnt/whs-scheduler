@@ -81,9 +81,9 @@ When `--section-offerings` is provided, the scheduler assigns students directly 
 Supported constraints in this mode:
 - Student no-overlap across meeting times parsed from `Expression`.
 - Per-section capacity via `MaxEnrollment`.
-- Teacher/room exclusivity at overlapping meeting times (conflicting offerings are excluded).
+- Limited duplicate-offering suppression for overlapping rows that share both the same teacher and the same meaningful room; teacher-only overlaps and shared/non-physical rooms are not globally excluded.
 - Requests for non-offered course codes are dropped during reconciliation.
-- Weekday variant requests in the same family are collapsed to one request per student; for lunch family `2912*`, dropped variants are labeled `lunch_auto_semester2` to represent inferred Sem 2 placement.
+- Weekday variant requests in the same family are collapsed to one request per student; for lunch family `2912*`, duplicate requests are treated as automatic semester-2 deferrals and labeled `lunch_auto_semester2`.
 
 You can pair this with `--requests-export` (for example `input/new/ScheduleRequests.export.txt`) so requests come from `Student_Number` + `CourseNumber`.
 

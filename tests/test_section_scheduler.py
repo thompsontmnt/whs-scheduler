@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scheduler.engine import Scheduler
+from scheduler.engine import Scheduler, _invalid_offerings
 from scheduler.models import Course, Request, Student
 from scheduler.parsers import (
     load_courses_from_requests_export,
@@ -113,6 +113,52 @@ class SectionSchedulerTests(unittest.TestCase):
             self.assertEqual(len(assignments), 2)
             self.assertEqual(len(conflicts), 1)
             self.assertEqual(conflicts[0].reason, "No available non-conflicting section")
+
+    def test_invalid_offerings_do_not_block_teacher_only_or_room_only_overlap(self):
+        offerings_text = (
+            "TermID\tCourse_Number\tTeacher\tExpression\tSection_Number\tRoom\tMaxEnrollment\tTied\tPhase\n"
+            "3500\tTARGET1\t100\t\"1(A)\"\t1\t101\t10\t1\t1\n"
+            "3500\tOTHER1\t100\t\"1(A)\"\t1\t202\t10\t1\t1\n"
+            "3500\tTARGET2\t200\t\"2(A)\"\t1\t303\t10\t1\t1\n"
+            "3500\tOTHER2\t201\t\"2(A)\"\t1\t303\t10\t1\t1\n"
+        )
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "offerings.txt"
+            path.write_text(offerings_text, encoding="utf-8")
+            offerings = load_section_offerings(path)
+
+            blocked = _invalid_offerings(offerings)
+            self.assertEqual(blocked, set())
+
+            students = {"1": Student("1", "One", "", 2026)}
+            courses = {
+                "TARGET1": Course("TARGET1", "D", "Target 1", "S1", "S1"),
+                "TARGET2": Course("TARGET2", "D", "Target 2", "S1", "S1"),
+            }
+            requests = [Request("1", "TARGET1"), Request("1", "TARGET2")]
+
+            scheduler = Scheduler(capacity_by_class={})
+            assignments, conflicts = scheduler.schedule_sections(students, requests, courses, offerings)
+
+            self.assertEqual(len(assignments), 2)
+            self.assertEqual(len(conflicts), 0)
+
+    def test_invalid_offerings_block_same_teacher_same_room_overlap(self):
+        offerings_text = (
+            "TermID\tCourse_Number\tTeacher\tExpression\tSection_Number\tRoom\tMaxEnrollment\tTied\tPhase\n"
+            "3500\tTARGET1\t100\t\"1(A)\"\t1\t101\t10\t1\t1\n"
+            "3500\tOTHER1\t100\t\"1(A)\"\t1\t101\t10\t1\t1\n"
+        )
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "offerings.txt"
+            path.write_text(offerings_text, encoding="utf-8")
+            offerings = load_section_offerings(path)
+
+            blocked = _invalid_offerings(offerings)
+            self.assertEqual(
+                blocked,
+                {"3500-OTHER1-1", "3500-TARGET1-1"},
+            )
 
     def test_schedulecc_generated_from_section_assignments(self):
         offerings_text = (
