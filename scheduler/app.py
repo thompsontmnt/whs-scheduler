@@ -101,84 +101,264 @@ _INDEX_HTML = """<!DOCTYPE html>
 <head>
   <meta charset=\"utf-8\">
   <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
-  <title>Scheduler</title>
+  <title>WHS Scheduler</title>
   <style>
-    * { box-sizing: border-box; }
-    body { font-family: system-ui, sans-serif; max-width: 48rem; margin: 2rem auto; padding: 0 1rem; }
-    h1 { font-size: 1.5rem; }
-    label { display: block; margin-top: 1rem; font-weight: 500; }
-    input[type=\"file\"] { margin-top: 0.25rem; }
-    button { margin-top: 1rem; padding: 0.5rem 1rem; background: #0d6efd; color: white; border: none; border-radius: 6px; cursor: pointer; }
-    button:hover { background: #0b5ed7; }
-    #result { margin-top: 1.5rem; padding: 1rem; background: #f8f9fa; border-radius: 8px; display: none; }
+    :root {
+      --blue: #003087;
+      --gold: #FFC72C;
+      --blue-dark: #002060;
+      --blue-light: #e8eef7;
+      --green: #198754;
+      --red: #dc3545;
+      --gray: #6c757d;
+      --border: #dee2e6;
+      --radius: 10px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: #f4f6fb; min-height: 100vh; }
+
+    /* Header */
+    header {
+      background: var(--blue);
+      color: white;
+      padding: 1.25rem 2rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      border-bottom: 4px solid var(--gold);
+    }
+    header h1 { font-size: 1.3rem; font-weight: 700; letter-spacing: 0.01em; }
+    header p { font-size: 0.8rem; opacity: 0.75; margin-top: 0.15rem; }
+    .logo {
+      width: 44px; height: 44px; background: var(--gold);
+      border-radius: 50%; display: flex; align-items: center;
+      justify-content: center; font-size: 1.3rem; flex-shrink: 0;
+    }
+
+    /* Main */
+    main { max-width: 52rem; margin: 2rem auto; padding: 0 1rem; }
+
+    /* Card */
+    .card {
+      background: white; border-radius: var(--radius);
+      border: 1px solid var(--border); padding: 1.75rem;
+      margin-bottom: 1.25rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+    .card-title {
+      font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--gray); margin-bottom: 1rem;
+    }
+
+    /* File inputs */
+    .file-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    @media (max-width: 540px) { .file-grid { grid-template-columns: 1fr; } }
+    .file-zone {
+      border: 2px dashed var(--border); border-radius: var(--radius);
+      padding: 1.25rem 1rem; text-align: center; cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      position: relative;
+    }
+    .file-zone:hover { border-color: var(--blue); background: var(--blue-light); }
+    .file-zone.has-file { border-color: var(--green); border-style: solid; background: #f0faf4; }
+    .file-zone input[type=\"file\"] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+    .file-icon { font-size: 1.75rem; margin-bottom: 0.4rem; }
+    .file-label { font-size: 0.8rem; font-weight: 600; color: #333; }
+    .file-hint { font-size: 0.72rem; color: var(--gray); margin-top: 0.2rem; }
+    .file-name {
+      font-size: 0.75rem; color: var(--green); font-weight: 600;
+      margin-top: 0.35rem; word-break: break-all;
+    }
+
+    /* Button */
+    .btn {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      padding: 0.65rem 1.4rem; border: none; border-radius: 6px;
+      font-size: 0.9rem; font-weight: 600; cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    .btn:hover { opacity: 0.88; }
+    .btn:active { transform: scale(0.98); }
+    .btn-primary { background: var(--blue); color: white; margin-top: 1.25rem; }
+    .btn-primary:disabled { background: var(--gray); cursor: not-allowed; opacity: 1; }
+    .btn-dl {
+      background: var(--blue-light); color: var(--blue);
+      font-size: 0.8rem; padding: 0.45rem 0.9rem;
+      text-decoration: none; border: 1px solid #c5d3e8;
+    }
+    .btn-dl.primary-dl { background: var(--blue); color: white; border-color: var(--blue); }
+
+    /* Spinner */
+    .spinner {
+      display: none; width: 18px; height: 18px;
+      border: 2px solid rgba(255,255,255,0.4);
+      border-top-color: white; border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading .spinner { display: inline-block; }
+    .loading .btn-text { display: none; }
+
+    /* Stats */
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; margin-bottom: 1.25rem; }
+    @media (max-width: 540px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+    .stat {
+      background: var(--blue-light); border-radius: 8px;
+      padding: 0.9rem 0.75rem; text-align: center;
+    }
+    .stat-value { font-size: 1.6rem; font-weight: 700; color: var(--blue); line-height: 1; }
+    .stat-label { font-size: 0.68rem; color: var(--gray); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 0.3rem; }
+    .stat.red .stat-value { color: var(--red); }
+    .stat.red { background: #fdf0f1; }
+    .stat.green .stat-value { color: var(--green); }
+    .stat.green { background: #f0faf4; }
+
+    /* Downloads */
+    .downloads { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
+    /* Error */
+    .error-box {
+      background: #fdf0f1; border: 1px solid #f5c2c7; border-radius: 8px;
+      padding: 0.85rem 1rem; color: var(--red); font-size: 0.875rem;
+      display: none; margin-top: 1rem;
+    }
+    .error-box.show { display: block; }
+
+    #result { display: none; }
     #result.show { display: block; }
-    #result a { display: inline-block; margin-right: 1rem; margin-top: 0.5rem; color: #0d6efd; }
-    .error { color: #dc3545; }
   </style>
 </head>
 <body>
-  <h1>Scheduler (Section-Offerings Mode)</h1>
-  <p>Upload 2 tab-delimited files: ScheduleRequests export + Sem 1 section offerings export.</p>
-  <form id=\"form\">
-    <label for=\"requests_export\">ScheduleRequests export (required) *</label>
-    <input type=\"file\" id=\"requests_export\" name=\"requests_export\" accept=\".txt,.tsv,.csv\" required>
 
-    <label for=\"section_offerings\">Section offerings export (required) *</label>
-    <input type=\"file\" id=\"section_offerings\" name=\"section_offerings\" accept=\".txt,.tsv,.csv\" required>
+<header>
+  <div class=\"logo\">🏫</div>
+  <div>
+    <h1>WHS Scheduler</h1>
+    <p>Westside High School — Section Placement Engine</p>
+  </div>
+</header>
 
-    <button type=\"submit\">Run schedule</button>
-  </form>
-
-  <div id=\"result\">
-    <p id=\"summary\"></p>
-    <p>
-      <a id=\"dl-schedulecc\" href=\"#\" download=\"schedulecc.txt\">Download schedulecc.txt</a>
-      <a id=\"dl-dropped\" href=\"#\" download=\"dropped_by_reason.txt\">Download dropped_by_reason.txt</a>
-      <a id=\"dl-conflicts\" href=\"#\" download=\"conflicts.txt\">Download conflicts.txt</a>
-      <a id=\"dl-assignments\" href=\"#\" download=\"assignments.txt\">Download assignments.txt</a>
-    </p>
+<main>
+  <div class=\"card\">
+    <div class=\"card-title\">Upload Export Files</div>
+    <div class=\"file-grid\">
+      <div class=\"file-zone\" id=\"zone-requests\">
+        <input type=\"file\" id=\"requests_export\" name=\"requests_export\" accept=\".txt,.tsv,.csv\" required>
+        <div class=\"file-icon\">📋</div>
+        <div class=\"file-label\">Schedule Requests</div>
+        <div class=\"file-hint\">ScheduleRequests.export.txt</div>
+        <div class=\"file-name\" id=\"name-requests\"></div>
+      </div>
+      <div class=\"file-zone\" id=\"zone-offerings\">
+        <input type=\"file\" id=\"section_offerings\" name=\"section_offerings\" accept=\".txt,.tsv,.csv\" required>
+        <div class=\"file-icon\">📅</div>
+        <div class=\"file-label\">Section Offerings</div>
+        <div class=\"file-hint\">Sem 1 sked export with phases.txt</div>
+        <div class=\"file-name\" id=\"name-offerings\"></div>
+      </div>
+    </div>
+    <button class=\"btn btn-primary\" id=\"run-btn\" type=\"button\" disabled>
+      <span class=\"spinner\"></span>
+      <span class=\"btn-text\">▶ Run Schedule</span>
+    </button>
+    <div class=\"error-box\" id=\"error-box\"></div>
   </div>
 
-  <p id=\"error\" class=\"error\"></p>
+  <div class=\"card\" id=\"result\">
+    <div class=\"card-title\">Results</div>
+    <div class=\"stats\">
+      <div class=\"stat green\">
+        <div class=\"stat-value\" id=\"s-assignments\">—</div>
+        <div class=\"stat-label\">Assigned</div>
+      </div>
+      <div class=\"stat red\">
+        <div class=\"stat-value\" id=\"s-conflicts\">—</div>
+        <div class=\"stat-label\">Conflicts</div>
+      </div>
+      <div class=\"stat\">
+        <div class=\"stat-value\" id=\"s-dropped\">—</div>
+        <div class=\"stat-label\">Dropped</div>
+      </div>
+      <div class=\"stat\">
+        <div class=\"stat-value\" id=\"s-students\">—</div>
+        <div class=\"stat-label\">Students</div>
+      </div>
+    </div>
+    <div class=\"card-title\">Download Outputs</div>
+    <div class=\"downloads\">
+      <a class=\"btn btn-dl primary-dl\" id=\"dl-schedulecc\" download=\"schedulecc.txt\">⬇ schedulecc.txt</a>
+      <a class=\"btn btn-dl\" id=\"dl-conflicts\" download=\"conflicts.txt\">⬇ conflicts.txt</a>
+      <a class=\"btn btn-dl\" id=\"dl-dropped\" download=\"dropped_by_reason.txt\">⬇ dropped_by_reason.txt</a>
+      <a class=\"btn btn-dl\" id=\"dl-assignments\" download=\"assignments.txt\">⬇ assignments.txt</a>
+    </div>
+  </div>
+</main>
 
-  <script>
-    const form = document.getElementById('form');
-    const result = document.getElementById('result');
-    const summary = document.getElementById('summary');
-    const dlSchedulecc = document.getElementById('dl-schedulecc');
-    const dlDropped = document.getElementById('dl-dropped');
-    const dlConflicts = document.getElementById('dl-conflicts');
-    const dlAssignments = document.getElementById('dl-assignments');
-    const errEl = document.getElementById('error');
+<script>
+  const reqInput  = document.getElementById('requests_export');
+  const offInput  = document.getElementById('section_offerings');
+  const runBtn    = document.getElementById('run-btn');
+  const errorBox  = document.getElementById('error-box');
+  const result    = document.getElementById('result');
 
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      errEl.textContent = '';
-      result.classList.remove('show');
-
-      const fd = new FormData();
-      fd.append('requests_export', document.getElementById('requests_export').files[0]);
-      fd.append('section_offerings', document.getElementById('section_offerings').files[0]);
-
-      try {
-        const r = await fetch('/api/schedule', { method: 'POST', body: fd });
-        const data = await r.json();
-        if (!r.ok) throw new Error(data.detail || r.statusText);
-
-        const s = data.summary;
-        summary.textContent = `${s.assignments} assignments, ${s.conflicts} conflicts, ${s.dropped} dropped (${s.students} students, ${s.courses} courses).`;
-
-        dlSchedulecc.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(data.schedulecc_csv);
-        dlDropped.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(data.dropped_by_reason_csv);
-        dlConflicts.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(data.conflicts_csv);
-        dlAssignments.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(data.assignments_csv);
-
-        result.classList.add('show');
-      } catch (err) {
-        errEl.textContent = err.message || 'Request failed';
+  function updateZone(input, zoneId, nameId) {
+    const zone = document.getElementById(zoneId);
+    const nameEl = document.getElementById(nameId);
+    input.addEventListener('change', () => {
+      if (input.files[0]) {
+        zone.classList.add('has-file');
+        nameEl.textContent = input.files[0].name;
+      } else {
+        zone.classList.remove('has-file');
+        nameEl.textContent = '';
       }
+      runBtn.disabled = !(reqInput.files[0] && offInput.files[0]);
     });
-  </script>
+  }
+  updateZone(reqInput, 'zone-requests', 'name-requests');
+  updateZone(offInput, 'zone-offerings', 'name-offerings');
+
+  function fmt(n) { return Number(n).toLocaleString(); }
+
+  runBtn.addEventListener('click', async () => {
+    errorBox.classList.remove('show');
+    result.classList.remove('show');
+    runBtn.classList.add('loading');
+    runBtn.disabled = true;
+
+    const fd = new FormData();
+    fd.append('requests_export', reqInput.files[0]);
+    fd.append('section_offerings', offInput.files[0]);
+
+    try {
+      const r = await fetch('/api/schedule', { method: 'POST', body: fd });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || r.statusText);
+
+      const s = data.summary;
+      document.getElementById('s-assignments').textContent = fmt(s.assignments);
+      document.getElementById('s-conflicts').textContent   = fmt(s.conflicts);
+      document.getElementById('s-dropped').textContent     = fmt(s.dropped);
+      document.getElementById('s-students').textContent    = fmt(s.students);
+
+      const enc = encodeURIComponent;
+      document.getElementById('dl-schedulecc').href  = 'data:text/plain;charset=utf-8,' + enc(data.schedulecc_csv);
+      document.getElementById('dl-dropped').href     = 'data:text/plain;charset=utf-8,' + enc(data.dropped_by_reason_csv);
+      document.getElementById('dl-conflicts').href   = 'data:text/plain;charset=utf-8,' + enc(data.conflicts_csv);
+      document.getElementById('dl-assignments').href = 'data:text/plain;charset=utf-8,' + enc(data.assignments_csv);
+
+      result.classList.add('show');
+    } catch (err) {
+      errorBox.textContent = err.message || 'Request failed.';
+      errorBox.classList.add('show');
+    } finally {
+      runBtn.classList.remove('loading');
+      runBtn.disabled = false;
+    }
+  });
+</script>
 </body>
 </html>
 """
