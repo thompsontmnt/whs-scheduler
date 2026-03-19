@@ -217,27 +217,15 @@ def _is_exclusive_room(room: str) -> bool:
 
 
 def _invalid_offerings(offerings: dict[str, list[SectionOffering]]) -> set[str]:
-    """Offerings that violate teacher/room exclusivity at the same time."""
-    all_offerings = [offering for rows in offerings.values() for offering in rows]
-    invalid: set[str] = set()
-    for i, first in enumerate(all_offerings):
-        for second in all_offerings[i + 1 :]:
-            if first.class_code == second.class_code:
-                continue
-            if not _has_overlap(first.meetings, second.meetings):
-                continue
-            same_teacher = first.teacher_id and first.teacher_id == second.teacher_id
-            same_room = (
-                _is_exclusive_room(first.room)
-                and _is_exclusive_room(second.room)
-                and first.room == second.room
-            )
-            # Only globally invalidate offerings when the overlap is a true duplicate:
-            # same teacher in the same meaningful room at the same time.
-            # Teacher-only and room-only overlaps are too aggressive for the exported
-            # PowerSchool data because many legitimate cross-listed/shared-space rows
-            # would otherwise be removed before scheduling.
-            if same_teacher and same_room:
-                invalid.add(first.section_id)
-                invalid.add(second.section_id)
-    return invalid
+    """Return the set of section IDs that should be excluded from scheduling.
+
+    The PowerSchool section-offerings export represents an already-validated
+    master schedule.  Co-teaching (same teacher, same room, same time across
+    different course codes) and shared large-group spaces (multiple sections
+    from different courses in the same room simultaneously) are both
+    intentional patterns in this data and must not be flagged.
+
+    No sections are currently excluded — this function is retained as a hook
+    for future data-quality checks if needed.
+    """
+    return set()
