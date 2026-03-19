@@ -316,8 +316,37 @@ def load_requests_export(path: Path) -> list[Request]:
     return requests
 
 
+def _check_duplicate_headers(path: Path, delimiter: str = "\t") -> None:
+    """Warn if the file has duplicate column names.
+
+    csv.DictReader silently uses the *last* value for any duplicate key, which
+    can cause subtle bugs when a column appears twice (e.g. MaxEnrollment in the
+    PowerSchool section-offerings export).  Calling this before opening the
+    DictReader surfaces the issue at load time so it is never silently ignored.
+    """
+    import sys
+    with path.open(newline="", encoding="utf-8") as f:
+        header_line = f.readline()
+    headers = header_line.rstrip("\r\n").split(delimiter)
+    seen: set[str] = set()
+    dupes: list[str] = []
+    for h in headers:
+        if h in seen and h not in dupes:
+            dupes.append(h)
+        seen.add(h)
+    if dupes:
+        print(
+            f"WARNING ({path.name}): duplicate column name(s) {dupes}. "
+            "csv.DictReader will use the LAST occurrence of each — earlier "
+            "columns with the same name are invisible to the parser. "
+            "Consider deduplicating the export before re-running.",
+            file=sys.stderr,
+        )
+
+
 def load_section_offerings(path: Path) -> dict[str, list[SectionOffering]]:
     """Load section offerings from schedule export (tab-delimited)."""
+    _check_duplicate_headers(path)
     offerings: dict[str, list[SectionOffering]] = {}
     with path.open(newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f, delimiter="	")

@@ -24,6 +24,7 @@ from scheduler.parsers import (
 from scheduler.reports import (
     write_assignments_csv,
     write_conflicts_csv,
+    write_lg_capacity_report,
     write_schedulecc_csv,
     write_schedulecc_csv_from_sections,
     write_dropped_by_reason_csv,
@@ -155,10 +156,13 @@ def main() -> None:
         dropped_path = args.output_dir / "dropped_by_reason.txt"
         write_schedulecc_csv_from_sections(schedulecc_path, section_assignments, offerings)
         write_dropped_by_reason_csv(dropped_path, dropped_rows, students)
+        lg_capacity_path = args.output_dir / "lg_capacity_report.txt"
+        write_lg_capacity_report(lg_capacity_path, offerings, section_assignments, courses)
         print(f"Wrote {assignments_path} ({len(class_assignments)} assignments)")
         print(f"Wrote {conflicts_path} ({len(conflicts)} conflicts)")
         print(f"Wrote {schedulecc_path}")
         print(f"Wrote {dropped_path} ({len(dropped_rows)} dropped requests)")
+        print(f"Wrote {lg_capacity_path}")
     else:
         assignments, conflicts = scheduler.schedule(students, requests, courses)
         write_assignments_csv(assignments_path, assignments, students, courses)
