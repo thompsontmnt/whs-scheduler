@@ -166,6 +166,97 @@ def write_schedulecc_csv(
             dcid += 1
 
 
+def write_lg_capacity_report(
+    path: Path,
+    offerings: dict[str, list[SectionOffering]],
+    section_assignments: list[SectionAssignment],
+    courses: dict[str, Course],
+) -> None:
+    """Write lg_capacity_report.csv: per-LG-section demand vs capacity.
+
+    For each LG section offering, reports:
+      companion_course  — the base small-group course whose teacher this LG section belongs to
+      section_id        — PowerSchool section ID
+      section_number    — section number
+      teacher_id        — teacher (must match the student's base-course teacher)
+      max_enrollment    — capacity from the offerings export
+      demand            — students successfully placed in the companion course with this teacher
+                          (these students *should* fill this LG section)
+      placed            — students actually assigned to this LG section
+      shortfall         — max(0, demand − max_enrollment); positive means capacity must be raised
+    """
+    # teacher of each placed (student, course) pair
+    placed_teacher: dict[tuple[str, str], str] = {
+        (sa.student_id, sa.class_code): sa.teacher_id
+        for sa in section_assignments
+    }
+    # headcount actually assigned per section_id
+    placed_count: dict[str, int] = {}
+    for sa in section_assignments:
+        placed_count[sa.section_id] = placed_count.get(sa.section_id, 0) + 1
+
+    # Aggregate per (lg_course, teacher_id) — a teacher may run multiple LG sections
+    # (e.g. A/B day splits), so demand must be compared against their combined capacity.
+    # Key: (class_code, teacher_id)  Value: {companion, course_name, sections[], total_cap, demand, placed}
+    by_teacher: dict[tuple[str, str], dict] = {}
+    for class_code, section_list in offerings.items():
+        if "LG" not in class_code:
+            continue
+        companion_code = class_code.replace("LG", "", 1)
+        course = courses.get(class_code)
+        course_name = course.name if course else ""
+        for offering in section_list:
+            key = (class_code, offering.teacher_id)
+            if key not in by_teacher:
+                by_teacher[key] = {
+                    "lg_course": class_code,
+                    "lg_course_name": course_name,
+                    "companion_course": companion_code,
+                    "teacher_id": offering.teacher_id,
+                    "sections": [],
+                    "total_max_enrollment": 0,
+                    "demand": sum(
+                        1
+                        for (_, cc), tid in placed_teacher.items()
+                        if cc == companion_code and tid == offering.teacher_id
+                    ),
+                    "placed": 0,
+                }
+            entry = by_teacher[key]
+            entry["sections"].append(offering.section_number)
+            entry["total_max_enrollment"] += offering.max_enrollment
+            entry["placed"] += placed_count.get(offering.section_id, 0)
+
+    rows = []
+    for entry in by_teacher.values():
+        cap = entry["total_max_enrollment"]
+        demand = entry["demand"]
+        shortfall = max(0, demand - cap) if cap > 0 else 0
+        rows.append((
+            entry["lg_course"],
+            entry["lg_course_name"],
+            entry["companion_course"],
+            entry["teacher_id"],
+            len(entry["sections"]),
+            cap,
+            demand,
+            entry["placed"],
+            shortfall,
+        ))
+
+    rows.sort(key=lambda r: (-r[8], r[0], r[3]))  # shortfall desc, then course, teacher
+
+    with path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            "lg_course", "lg_course_name", "companion_course",
+            "teacher_id", "num_sections", "total_max_enrollment",
+            "demand", "placed", "shortfall",
+        ])
+        for row in rows:
+            writer.writerow(row)
+
+
 def write_schedulecc_csv_from_sections(
     path: Path,
     assignments: list[SectionAssignment],
