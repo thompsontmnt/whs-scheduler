@@ -280,6 +280,7 @@ def write_schedulecc_csv_from_sections(
         "SCHEDULECC.SectionID",
         "SCHEDULECC.TeacherID",
         "SCHEDULECC.MaxEnrollment",
+        "SCHEDULECC.MaxCut",
         "SCHEDULECC.Room",
     ]
     offering_by_id = {o.section_id: o for rows in offerings.values() for o in rows}
@@ -291,6 +292,9 @@ def write_schedulecc_csv_from_sections(
             offering = offering_by_id.get(assignment.section_id)
             if offering is None:
                 continue
+            # MaxCut=1 tells PowerSchool to enforce the enrollment cap.
+            # MaxCut=0 means unlimited (used when MaxEnrollment=0).
+            max_cut = 1 if offering.max_enrollment and offering.max_enrollment > 0 else 0
             writer.writerow([
                 str(dcid),
                 offering.build_id,
@@ -307,6 +311,7 @@ def write_schedulecc_csv_from_sections(
                 offering.section_id,
                 offering.teacher_id,
                 str(offering.max_enrollment) if offering.max_enrollment else "",
+                str(max_cut),
                 offering.room,
             ])
             dcid += 1
