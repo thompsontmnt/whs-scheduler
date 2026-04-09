@@ -366,7 +366,7 @@ def load_section_offerings(path: Path) -> dict[str, list[SectionOffering]]:
             build_id = (row.get("BuildID") or "").strip()
             max_raw = (row.get("MaxEnrollment") or "").strip()
             phase_raw = (row.get("Phase") or "0").strip()
-            section_id = (row.get("SectionID") or f"{term_id}-{class_code}-{section_number}").strip()
+            section_id = (row.get("SectionID") or row.get("Section ID") or f"{term_id}-{class_code}-{section_number}").strip()
             try:
                 max_enrollment = int(max_raw) if max_raw else 0
             except ValueError:
