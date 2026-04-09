@@ -283,35 +283,49 @@ def write_schedulecc_csv_from_sections(
         "SCHEDULECC.MaxCut",
         "SCHEDULECC.Room",
     ]
-    offering_by_id = {o.section_id: o for rows in offerings.values() for o in rows}
+    # Build a list of all offerings per section_id, preserving every meeting row.
+    # Untied sections can have multiple rows in the source export — one per independent
+    # meeting (e.g. sid=316848 has rows for "12(B)" and "7(E)").  PowerSchool ScheduleCC
+    # requires a separate row for each meeting of an untied section; tied sections only
+    # need one row (we use the first occurrence, which carries the full expression).
+    offerings_by_id: dict[str, list[SectionOffering]] = {}
+    for rows in offerings.values():
+        for o in rows:
+            offerings_by_id.setdefault(o.section_id, []).append(o)
+
     with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f, delimiter="	", quoting=csv.QUOTE_ALL)
         writer.writerow(headers)
         dcid = starting_dcid
         for assignment in assignments:
-            offering = offering_by_id.get(assignment.section_id)
-            if offering is None:
+            offering_rows = offerings_by_id.get(assignment.section_id)
+            if not offering_rows:
                 continue
-            # MaxCut=1 tells PowerSchool to enforce the enrollment cap.
-            # MaxCut=0 means unlimited (used when MaxEnrollment=0).
-            max_cut = 1 if offering.max_enrollment and offering.max_enrollment > 0 else 0
-            writer.writerow([
-                str(dcid),
-                offering.build_id,
-                assignment.class_code,
-                offering.date_enrolled,
-                offering.date_left,
-                offering.expression or build_expression_from_meetings(list(offering.meetings)),
-                "",
-                offering.school_id,
-                offering.section_number,
-                offering.section_type,
-                offering.term_id,
-                assignment.student_id,
-                offering.section_id,
-                offering.teacher_id,
-                str(offering.max_enrollment) if offering.max_enrollment else "",
-                str(max_cut),
-                offering.room,
-            ])
-            dcid += 1
+            # For tied sections: one ScheduleCC row using the first (and usually only) row.
+            # For untied sections: one ScheduleCC row per meeting so PowerSchool enrolls
+            # the student in every independent meeting of the section.
+            rows_to_write = [offering_rows[0]] if offering_rows[0].tied else offering_rows
+            for offering in rows_to_write:
+                # MaxCut=1 tells PowerSchool to enforce the enrollment cap.
+                # MaxCut=0 means unlimited (used when MaxEnrollment=0).
+                max_cut = 1 if offering.max_enrollment and offering.max_enrollment > 0 else 0
+                writer.writerow([
+                    str(dcid),
+                    offering.build_id,
+                    assignment.class_code,
+                    offering.date_enrolled,
+                    offering.date_left,
+                    offering.expression or build_expression_from_meetings(list(offering.meetings)),
+                    "",
+                    offering.school_id,
+                    offering.section_number,
+                    offering.section_type,
+                    offering.term_id,
+                    assignment.student_id,
+                    offering.section_id,
+                    offering.teacher_id,
+                    str(offering.max_enrollment) if offering.max_enrollment else "",
+                    str(max_cut),
+                    offering.room,
+                ])
+                dcid += 1
