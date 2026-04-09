@@ -6,6 +6,8 @@ Only capacity and reference validity are enforced (no semester-overlap rule).
 
 from __future__ import annotations
 
+from collections import defaultdict
+
 from scheduler.models import Assignment, Conflict, Course, Request, SectionAssignment, SectionOffering, Student
 
 
@@ -28,6 +30,133 @@ def _request_sort_key(
     duration_priority = 0 if (course and course.duration_flag == "F1") else 1
     semester_flag = course.semester_flag if course else ""
     return (grad_year, request.student_id, duration_priority, semester_flag, request.class_code)
+
+
+def _schedule_multi_phase(
+    student_id: str,
+    class_code: str,
+    all_offerings: list[SectionOffering],
+    student_meetings: set[tuple[int, int]],
+    enrollment: dict[str, int],
+    section_all_meetings: dict[str, set[tuple[int, int]]],
+) -> tuple[list[SectionOffering], set[tuple[int, int]]]:
+    """Assign a student to one section per required phase type, all the same teacher.
+
+    Phase semantics for multi-phase untied courses:
+      Phase 1 = Gradebook section (administrative; assigned without blocking conflict check)
+      Phase 2 = Large-group or alternate meeting embedded within the same course code
+      Phase 3+ = Weekday meeting slots (Monday, Tuesday, Wednesday, Thursday, Friday)
+
+    Teacher-tied rule: all phase-3+ sections must share the same teacher_id.
+    Phase 1 and Phase 2 are also matched to the chosen teacher where possible.
+
+    A single section_id may cover multiple phases (e.g. section 317016 appears as both
+    Phase 4/Tuesday and Phase 6/Friday). When that section is committed for one phase,
+    it automatically satisfies the other phase without adding a duplicate enrollment.
+
+    Returns (chosen_offerings, committed_meetings):
+      chosen_offerings  — one SectionOffering per unique section_id selected
+      committed_meetings — all (day, mod) slots occupied by the chosen sections
+    Returns ([], set()) when no valid teacher assignment can be found.
+    """
+    # Group offerings by phase value
+    by_phase: dict[int, list[SectionOffering]] = defaultdict(list)
+    for o in all_offerings:
+        by_phase[o.phase].append(o)
+
+    phases = sorted(by_phase.keys())
+    meeting_phases = [p for p in phases if p >= 3]
+
+    if not meeting_phases:
+        # No weekday meeting phases — caller should fall back to single-phase logic
+        return [], set()
+
+    # Build teacher → {phase → [sorted offerings]} for meeting phases
+    teacher_opts: dict[str, dict[int, list[SectionOffering]]] = {}
+    for phase in meeting_phases:
+        for o in by_phase[phase]:
+            tid = o.teacher_id
+            if tid not in teacher_opts:
+                teacher_opts[tid] = defaultdict(list)
+            teacher_opts[tid][phase].append(o)
+
+    # Qualify: teacher must have at least one option in every required meeting phase
+    qualified_teachers = sorted(
+        tid for tid, opts in teacher_opts.items()
+        if all(p in opts for p in meeting_phases)
+    )
+
+    for teacher_id in qualified_teachers:
+        chosen: list[SectionOffering] = []
+        ok = True
+        committed_meetings: set[tuple[int, int]] = set()
+        committed_sids: set[str] = set()
+
+        # --- Phase 3+ (weekday meetings): one non-conflicting section per phase ---
+        for phase in meeting_phases:
+            # Sort by current enrollment (least-loaded first) for even distribution
+            options = sorted(
+                teacher_opts[teacher_id][phase],
+                key=lambda o: (enrollment.get(o.section_id, 0), o.section_id),
+            )
+            placed = False
+            for o in options:
+                if o.section_id in committed_sids:
+                    # Already committed for another phase — this section covers this phase too
+                    placed = True
+                    break
+                sid_meetings = section_all_meetings.get(o.section_id, set(o.meetings))
+                cap_ok = o.max_enrollment <= 0 or enrollment.get(o.section_id, 0) < o.max_enrollment
+                no_conflict = not (sid_meetings & student_meetings) and not (sid_meetings & committed_meetings)
+                if cap_ok and no_conflict:
+                    chosen.append(o)
+                    committed_meetings |= sid_meetings
+                    committed_sids.add(o.section_id)
+                    placed = True
+                    break
+
+            if not placed:
+                ok = False
+                break
+
+        if not ok:
+            continue
+
+        # --- Phase 2 (LG or second meeting within this course code): same teacher ---
+        for o in sorted(
+            by_phase.get(2, []),
+            key=lambda o: (enrollment.get(o.section_id, 0), o.section_id),
+        ):
+            if o.teacher_id != teacher_id:
+                continue
+            if o.section_id in committed_sids:
+                break  # Already committed
+            sid_meetings = section_all_meetings.get(o.section_id, set(o.meetings))
+            cap_ok = o.max_enrollment <= 0 or enrollment.get(o.section_id, 0) < o.max_enrollment
+            no_conflict = not (sid_meetings & student_meetings) and not (sid_meetings & committed_meetings)
+            if cap_ok and no_conflict:
+                chosen.append(o)
+                committed_meetings |= sid_meetings
+                committed_sids.add(o.section_id)
+                break
+
+        # --- Phase 1 (Gradebook): same teacher; no conflict check (administrative) ---
+        for o in by_phase.get(1, []):
+            if o.section_id in committed_sids:
+                break
+            if o.teacher_id == teacher_id:
+                cap_ok = o.max_enrollment <= 0 or enrollment.get(o.section_id, 0) < o.max_enrollment
+                if cap_ok:
+                    chosen.append(o)
+                    committed_sids.add(o.section_id)
+                    # Deliberately NOT added to committed_meetings — gradebook is
+                    # administrative and must not block placement of real course sections.
+                    break
+
+        return chosen, committed_meetings
+
+    # No valid teacher found for all required meeting phases
+    return [], set()
 
 
 class Scheduler:
@@ -118,7 +247,12 @@ class Scheduler:
         courses: dict[str, Course],
         offerings: dict[str, list[SectionOffering]],
     ) -> tuple[list[SectionAssignment], list[Conflict]]:
-        """Assign students to concrete section offerings with overlap/capacity checks."""
+        """Assign students to concrete section offerings with overlap/capacity checks.
+
+        Multi-phase courses (any course with Phase >= 3 offerings) require one section
+        enrollment per phase type, all from the same teacher. Single-phase courses use
+        the original one-section-per-request logic.
+        """
         sorted_requests = sorted(requests, key=lambda r: _request_sort_key(r, students, courses))
         assignments: list[SectionAssignment] = []
         conflicts: list[Conflict] = []
@@ -128,6 +262,23 @@ class Scheduler:
         # Index of placed section assignments for teacher-matching lookups (e.g. LG courses).
         placed_sections: dict[tuple[str, str], SectionAssignment] = {}
         blocked_offerings = _invalid_offerings(offerings)
+
+        # Pre-compute: for each section_id, accumulate ALL meetings from every offering row.
+        # A section_id can appear in multiple rows (one per meeting day for untied sections),
+        # so conflict checking must consider the complete set of meetings for that section.
+        section_all_meetings: dict[str, set[tuple[int, int]]] = defaultdict(set)
+        for rows in offerings.values():
+            for o in rows:
+                section_all_meetings[o.section_id].update(o.meetings)
+
+        # Multi-phase courses have at least one offering with phase >= 3.
+        # Phase 3+ represents weekday meeting slots (Mon/Tue/Wed/Thu/Fri).
+        # Students must be enrolled in one section per phase, all same teacher.
+        multi_phase_courses: set[str] = {
+            class_code
+            for class_code, rows in offerings.items()
+            if any(o.phase >= 3 for o in rows)
+        }
 
         for request in sorted_requests:
             if request.student_id not in students:
@@ -142,46 +293,97 @@ class Scheduler:
                 conflicts.append(Conflict(request.student_id, request.class_code, "No section offering"))
                 continue
 
-            # LG courses: restrict to the section whose teacher matches the student's
-            # already-placed companion small-group section.  All LG sections share the
-            # same meeting time, so teacher identity is the only meaningful distinguisher.
-            # Sort order (alphabetical class_code) guarantees the base course is processed
-            # before its LG companion (e.g. "1765A" < "1765ALG"), so placed_sections will
-            # already contain the companion when we reach the LG request.
-            companion_code = _lg_companion_code(request.class_code)
-            if companion_code:
-                companion_sa = placed_sections.get((request.student_id, companion_code))
-                if companion_sa and companion_sa.teacher_id:
-                    candidate_offerings = [
-                        o for o in candidate_offerings if o.teacher_id == companion_sa.teacher_id
-                    ]
-
-            placed = False
             meetings = student_meetings.setdefault(request.student_id, set())
-            for offering in candidate_offerings:
-                if offering.section_id in blocked_offerings:
-                    continue
-                if offering.max_enrollment > 0 and enrollment.get(offering.section_id, 0) >= offering.max_enrollment:
-                    continue
-                if offering.meetings and meetings.intersection(offering.meetings):
-                    continue
 
-                sa = SectionAssignment(
-                    student_id=request.student_id,
-                    class_code=request.class_code,
-                    section_number=offering.section_number,
-                    section_id=offering.section_id,
-                    teacher_id=offering.teacher_id,
+            # ── Multi-phase path ──────────────────────────────────────────────────────
+            if request.class_code in multi_phase_courses:
+                chosen, committed = _schedule_multi_phase(
+                    request.student_id,
+                    request.class_code,
+                    candidate_offerings,
+                    meetings,
+                    enrollment,
+                    section_all_meetings,
                 )
-                assignments.append(sa)
-                placed_sections[(request.student_id, request.class_code)] = sa
-                enrollment[offering.section_id] = enrollment.get(offering.section_id, 0) + 1
-                meetings.update(offering.meetings)
-                placed = True
-                break
+                if chosen:
+                    primary_sa: SectionAssignment | None = None
+                    for offering in chosen:
+                        sa = SectionAssignment(
+                            student_id=request.student_id,
+                            class_code=request.class_code,
+                            section_number=offering.section_number,
+                            section_id=offering.section_id,
+                            teacher_id=offering.teacher_id,
+                        )
+                        assignments.append(sa)
+                        enrollment[offering.section_id] = enrollment.get(offering.section_id, 0) + 1
+                        # First phase-3+ offering is the "primary" section used for LG
+                        # companion teacher-matching (e.g. 1920LG looks up 1920's teacher).
+                        if primary_sa is None and offering.phase >= 3:
+                            primary_sa = sa
+                    # Fall back to first offering if no phase-3+ section found
+                    if primary_sa is None:
+                        primary_sa = SectionAssignment(
+                            student_id=request.student_id,
+                            class_code=request.class_code,
+                            section_number=chosen[0].section_number,
+                            section_id=chosen[0].section_id,
+                            teacher_id=chosen[0].teacher_id,
+                        )
+                    placed_sections[(request.student_id, request.class_code)] = primary_sa
+                    meetings.update(committed)
+                else:
+                    conflicts.append(Conflict(
+                        request.student_id,
+                        request.class_code,
+                        "No available non-conflicting section",
+                    ))
 
-            if not placed:
-                conflicts.append(Conflict(request.student_id, request.class_code, "No available non-conflicting section"))
+            # ── Single-phase path ─────────────────────────────────────────────────────
+            else:
+                # LG courses: restrict to the section whose teacher matches the student's
+                # already-placed companion small-group section.
+                companion_code = _lg_companion_code(request.class_code)
+                if companion_code:
+                    companion_sa = placed_sections.get((request.student_id, companion_code))
+                    if companion_sa and companion_sa.teacher_id:
+                        candidate_offerings = [
+                            o for o in candidate_offerings if o.teacher_id == companion_sa.teacher_id
+                        ]
+
+                placed = False
+                for offering in candidate_offerings:
+                    if offering.section_id in blocked_offerings:
+                        continue
+                    if offering.max_enrollment > 0 and enrollment.get(offering.section_id, 0) >= offering.max_enrollment:
+                        continue
+                    # Use section_all_meetings so tied sections with compound expressions
+                    # and untied sections with multiple meeting rows are both correctly
+                    # conflict-checked against the student's full placed-meeting set.
+                    sid_meetings = section_all_meetings.get(offering.section_id, set(offering.meetings))
+                    if sid_meetings and meetings.intersection(sid_meetings):
+                        continue
+
+                    sa = SectionAssignment(
+                        student_id=request.student_id,
+                        class_code=request.class_code,
+                        section_number=offering.section_number,
+                        section_id=offering.section_id,
+                        teacher_id=offering.teacher_id,
+                    )
+                    assignments.append(sa)
+                    placed_sections[(request.student_id, request.class_code)] = sa
+                    enrollment[offering.section_id] = enrollment.get(offering.section_id, 0) + 1
+                    meetings.update(sid_meetings)
+                    placed = True
+                    break
+
+                if not placed:
+                    conflicts.append(Conflict(
+                        request.student_id,
+                        request.class_code,
+                        "No available non-conflicting section",
+                    ))
 
         return (
             sorted(assignments, key=lambda a: (a.student_id, a.class_code, a.section_number, a.section_id)),
