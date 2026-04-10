@@ -105,12 +105,17 @@ def _schedule_multi_phase(
                     # Already committed for another phase — this section covers this phase too
                     placed = True
                     break
-                sid_meetings = section_all_meetings.get(o.section_id, set(o.meetings))
+                # Use only THIS offering row's meetings, not section_all_meetings.
+                # A section_id may appear in both Phase 2 (LG/Monday) and Phase 3+ rows;
+                # section_all_meetings would merge those, but Phase 2 meetings are handled
+                # separately via standalone LG course requests and must not block Phase 3+
+                # placement. Using o.meetings isolates each phase's actual meeting time.
+                phase_meetings = set(o.meetings)
                 cap_ok = o.max_enrollment <= 0 or enrollment.get(o.section_id, 0) < o.max_enrollment
-                no_conflict = not (sid_meetings & student_meetings) and not (sid_meetings & committed_meetings)
+                no_conflict = not (phase_meetings & student_meetings) and not (phase_meetings & committed_meetings)
                 if cap_ok and no_conflict:
                     chosen.append(o)
-                    committed_meetings |= sid_meetings
+                    committed_meetings |= phase_meetings
                     committed_sids.add(o.section_id)
                     placed = True
                     break
