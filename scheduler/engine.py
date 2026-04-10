@@ -122,23 +122,10 @@ def _schedule_multi_phase(
         if not ok:
             continue
 
-        # --- Phase 2 (LG or second meeting within this course code): same teacher ---
-        for o in sorted(
-            by_phase.get(2, []),
-            key=lambda o: (enrollment.get(o.section_id, 0), o.section_id),
-        ):
-            if o.teacher_id != teacher_id:
-                continue
-            if o.section_id in committed_sids:
-                break  # Already committed
-            sid_meetings = section_all_meetings.get(o.section_id, set(o.meetings))
-            cap_ok = o.max_enrollment <= 0 or enrollment.get(o.section_id, 0) < o.max_enrollment
-            no_conflict = not (sid_meetings & student_meetings) and not (sid_meetings & committed_meetings)
-            if cap_ok and no_conflict:
-                chosen.append(o)
-                committed_meetings |= sid_meetings
-                committed_sids.add(o.section_id)
-                break
+        # Phase 2 is intentionally skipped here. All LG sections at WHS have their own
+        # course code (e.g. 1207LG) and are processed as separate requests via the
+        # single-phase LG companion-matching path. Enrolling Phase 2 here would create
+        # duplicate LG rows for students who also have a standalone LG request.
 
         # --- Phase 1 (Gradebook): same teacher; no conflict check (administrative) ---
         for o in by_phase.get(1, []):
